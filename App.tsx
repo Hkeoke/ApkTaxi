@@ -8,18 +8,10 @@ import {Truck, Users, ClipboardList} from 'lucide-react-native';
 // Screens de Autenticación
 import LoginScreen from './src/screens/LoginScreen';
 import AdminScreen from './src/screens/AdminScreen';
-//import RegisterScreen from './src/screens/auth/RegisterScreen';
 
 // Screens para Choferes
 import DriverHomeScreen from './src/screens/DriverScreen';
 import OperatorHomeScreen from './src/screens/OperatorScreen';
-//import DriverTripsScreen from './src/screens/driver/TripsScreen';
-//import DriverProfileScreen from './src/screens/driver/ProfileScreen';
-
-// Screens para Operadores
-//import OperatorHomeScreen from './src/screens/operator/HomeScreen';
-//import OperatorTripsScreen from './src/screens/operator/TripsScreen';
-//import OperatorProfileScreen from './src/screens/operator/ProfileScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -84,6 +76,7 @@ function DriverTabs() {
 }
 
 function OperatorTabs() {
+  const {user} = useAuthContext();
   return (
     <Tab.Navigator
       screenOptions={{
@@ -93,7 +86,7 @@ function OperatorTabs() {
       }}>
       <Tab.Screen
         name="OperatorHome"
-        component={OperatorHomeScreen}
+        component={() => <OperatorHomeScreen user={user} />}
         options={{
           title: 'Inicio',
           tabBarIcon: ({color, size}) => <Users color={color} size={size} />,

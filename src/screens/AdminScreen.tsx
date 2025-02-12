@@ -21,7 +21,7 @@ const AdminScreen = ({navigation}) => {
       <View style={styles.header}>
         <Text style={styles.title}>Panel de Administración</Text>
         <Text style={styles.subtitle}>
-          Bienvenido, {user?.admin_profiles?.first_name || 'Administrador'}
+          Bienvenido, {user?.role || 'Administrador'}
         </Text>
       </View>
 

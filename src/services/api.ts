@@ -8,6 +8,85 @@ import {
   TripStatus,
 } from '../utils/db_types';
 
+// En tripService
+export const tripRequestService = {
+  async createRequest(requestData: {
+    driver_id: string;
+    operator_id: string;
+    origin: string;
+    destination: string;
+    price: number;
+  }) {
+    const {data, error} = await supabase
+      .from('trip_requests')
+      .insert(requestData)
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async updateRequestStatus(
+    requestId: string,
+    status: 'accepted' | 'rejected',
+  ) {
+    const {data, error} = await supabase
+      .from('trip_requests')
+      .update({status})
+      .eq('id', requestId)
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async getDriverPendingRequests(driverId: string) {
+    const {data, error} = await supabase
+      .from('trip_requests')
+      .select(
+        `
+        *,
+        operator_profiles (
+          first_name,
+          last_name
+        )
+      `,
+      )
+      .eq('driver_id', driverId)
+      .eq('status', 'pending');
+
+    if (error) throw error;
+    return data;
+  },
+
+  async convertRequestToTrip(requestId: string) {
+    const {data: request, error: requestError} = await supabase
+      .from('trip_requests')
+      .select('*')
+      .eq('id', requestId)
+      .single();
+
+    if (requestError) throw requestError;
+
+    const tripData = {
+      driver_id: request.driver_id,
+      operator_id: request.operator_id,
+      origin: request.origin,
+      destination: request.destination,
+      price: request.price,
+      status: 'in_progress',
+    };
+
+    const {data: trip, error: tripError} = await supabase
+      .from('trips')
+      .insert(tripData)
+      .single();
+
+    if (tripError) throw tripError;
+    return trip;
+  },
+};
+
 export const authService = {
   async login(phone_number: string, pin: string): Promise<User> {
     const {data, error} = await supabase

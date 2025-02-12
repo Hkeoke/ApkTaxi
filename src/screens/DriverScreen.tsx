@@ -6,15 +6,17 @@ import {
   Text,
   Platform,
   PermissionsAndroid,
+  TouchableOpacity,
   Alert,
+  FlatList,
 } from 'react-native';
-import MapView, {Marker, PROVIDER_DEFAULT} from 'react-native-maps';
+import MapView, {PROVIDER_DEFAULT} from 'react-native-maps';
 import Geolocation from '@react-native-community/geolocation';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import {driverService} from '../services/api';
+import {driverService, tripRequestService} from '../services/api';
 
 const DriverHomeScreen = ({user}) => {
   const [position, setPosition] = useState(null);
+  const [pendingRequests, setPendingRequests] = useState([]);
   const mapRef = useRef(null);
   const [isOnDuty, setIsOnDuty] = useState(false);
   const [offlineMode, setOfflineMode] = useState(false);
@@ -50,6 +52,37 @@ const DriverHomeScreen = ({user}) => {
         reject(new Error('Location request timed out'));
       }, 30000);
     });
+  };
+  useEffect(() => {
+    const fetchPendingRequests = async () => {
+      try {
+        const requests = await tripRequestService.getDriverPendingRequests(
+          user.id,
+        );
+        setPendingRequests(requests);
+      } catch (error) {
+        console.error('Error fetching requests:', error);
+      }
+    };
+
+    fetchPendingRequests();
+    // Establecer un intervalo para actualizar las solicitudes
+    const interval = setInterval(fetchPendingRequests, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleRequestResponse = async (requestId, status) => {
+    try {
+      await tripRequestService.updateRequestStatus(requestId, status);
+      if (status === 'accepted') {
+        await tripRequestService.convertRequestToTrip(requestId);
+        Alert.alert('Éxito', 'Viaje aceptado');
+      }
+      setPendingRequests(prev => prev.filter(req => req.id !== requestId));
+    } catch (error) {
+      console.error('Error handling request:', error);
+      Alert.alert('Error', 'No se pudo procesar la solicitud');
+    }
   };
   useEffect(() => {
     requestLocationPermission();
@@ -120,14 +153,6 @@ const DriverHomeScreen = ({user}) => {
 
             return newPosition;
           });
-
-          if (isOnDuty) {
-            if (offlineMode) {
-              storeOfflineLocation(newPosition);
-            } else {
-              throttledUpdate(newPosition);
-            }
-          }
         },
 
         error => console.error(error),
@@ -195,36 +220,6 @@ const DriverHomeScreen = ({user}) => {
     }
   };
 
-  const toggleOfflineMode = async () => {
-    const newOfflineMode = !offlineMode;
-    setOfflineMode(newOfflineMode);
-
-    if (newOfflineMode && position) {
-      try {
-        await AsyncStorage.setItem(
-          'offlineMapRegion',
-          JSON.stringify(position),
-        );
-        Alert.alert(
-          'Modo offline activado',
-          'Los cambios se sincronizarán cuando vuelvas a estar en línea',
-        );
-      } catch (error) {
-        console.error('Error saving offline region:', error);
-      }
-    } else if (!newOfflineMode) {
-      try {
-        const storedPosition = await AsyncStorage.getItem('offlineMapRegion');
-        if (storedPosition) {
-          await updateDriverLocation(JSON.parse(storedPosition));
-          await AsyncStorage.removeItem('offlineMapRegion');
-        }
-      } catch (error) {
-        console.error('Error syncing offline data:', error);
-      }
-    }
-  };
-
   const mapStyle = [
     {
       elementType: 'geometry',
@@ -272,6 +267,37 @@ const DriverHomeScreen = ({user}) => {
 
   return (
     <View style={styles.container}>
+      {pendingRequests.length > 0 && (
+        <View style={styles.requestsPanel}>
+          <Text style={styles.requestsTitle}>Solicitudes Pendientes</Text>
+          <FlatList
+            data={pendingRequests}
+            renderItem={({item}) => (
+              <View style={styles.requestItem}>
+                <View>
+                  <Text>Origen: {item.origin}</Text>
+                  <Text>Destino: {item.destination}</Text>
+                  <Text>Precio: ${item.price}</Text>
+                  <Text>Operador: {item.operator_profiles.first_name}</Text>
+                </View>
+                <View style={styles.requestActions}>
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.acceptButton]}
+                    onPress={() => handleRequestResponse(item.id, 'accepted')}>
+                    <Text style={styles.buttonText}>Aceptar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.rejectButton]}
+                    onPress={() => handleRequestResponse(item.id, 'rejected')}>
+                    <Text style={styles.buttonText}>Rechazar</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+            keyExtractor={item => item.id}
+          />
+        </View>
+      )}
       <View style={styles.statusBar}>
         <View style={styles.statusItem}>
           <Text style={styles.statusText}>En servicio</Text>
@@ -327,6 +353,62 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 16,
+  },
+  // Nuevos estilos para el panel de solicitudes
+  requestsPanel: {
+    position: 'absolute',
+    top: 80,
+    left: 10,
+    right: 10,
+    backgroundColor: 'white',
+    borderRadius: 10,
+    padding: 15,
+    zIndex: 1000,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    maxHeight: '50%',
+  },
+  requestsTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 10,
+    color: '#333',
+  },
+  requestItem: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  requestActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 10,
+    gap: 10,
+  },
+  actionButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 6,
+    elevation: 2,
+  },
+  acceptButton: {
+    backgroundColor: '#4CAF50',
+  },
+  rejectButton: {
+    backgroundColor: '#f44336',
+  },
+  buttonText: {
+    color: 'white',
+    fontWeight: '500',
   },
 });
 
