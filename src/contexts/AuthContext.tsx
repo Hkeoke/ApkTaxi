@@ -1,3 +1,4 @@
+// src/contexts/AuthContext.tsx
 import React, {createContext, useContext} from 'react';
 import {useAuth} from '../hooks/auth';
 import {User} from '../utils/db_types';
@@ -5,7 +6,8 @@ import {User} from '../utils/db_types';
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  setUser: (user: User | null) => void;
+  setUser: (user: User | null) => Promise<void>;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
