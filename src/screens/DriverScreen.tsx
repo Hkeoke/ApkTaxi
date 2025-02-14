@@ -13,6 +13,7 @@ import {
 import MapView, {PROVIDER_DEFAULT} from 'react-native-maps';
 import Geolocation from '@react-native-community/geolocation';
 import {driverService, tripRequestService} from '../services/api';
+import NotificationService from '../services/notifications';
 
 const DriverHomeScreen = ({user}) => {
   const [position, setPosition] = useState(null);
@@ -20,7 +21,15 @@ const DriverHomeScreen = ({user}) => {
   const mapRef = useRef(null);
   const [isOnDuty, setIsOnDuty] = useState(false);
   const [offlineMode, setOfflineMode] = useState(false);
+  useEffect(() => {
+    // Iniciar el servicio de notificaciones
+    NotificationService.startNotificationService(user.id);
 
+    // Limpiar al desmontar
+    return () => {
+      NotificationService.stopNotificationService();
+    };
+  }, [user.id]);
   const getCurrentPosition = () => {
     return new Promise((resolve, reject) => {
       const watchId = Geolocation.watchPosition(

@@ -12,6 +12,7 @@ import AdminScreen from './src/screens/AdminScreen';
 // Screens para Choferes
 import DriverHomeScreen from './src/screens/DriverScreen';
 import OperatorHomeScreen from './src/screens/OperatorScreen';
+import NotificationService from './src/services/notifications';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
