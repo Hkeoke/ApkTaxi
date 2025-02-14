@@ -12,7 +12,11 @@ import AdminScreen from './src/screens/AdminScreen';
 // Screens para Choferes
 import DriverHomeScreen from './src/screens/DriverScreen';
 import OperatorHomeScreen from './src/screens/OperatorScreen';
+import {PermissionsAndroid, Platform} from 'react-native';
 import NotificationService from './src/services/notifications';
+import {View} from 'react-native';
+import {Text} from 'react-native';
+import {useEffect, useState} from 'react';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -37,6 +41,10 @@ function AdminTabs() {
 }
 function DriverTabs() {
   const {user} = useAuthContext();
+
+  // Iniciar el servicio de notificaciones
+  NotificationService.startNotificationService(user?.id);
+
   return (
     <Tab.Navigator
       screenOptions={{
@@ -149,6 +157,64 @@ function NavigationStack() {
 }
 
 function App(): React.JSX.Element {
+  const [isPermissionGranted, setIsPermissionGranted] = useState(false);
+
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const checkPermissions = async () => {
+      try {
+        if (Platform.OS === 'android') {
+          const granted = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+
+            {
+              title: 'Permiso de ubicación',
+
+              message: 'La aplicación necesita acceso a tu ubicación',
+
+              buttonNeutral: 'Preguntar luego',
+
+              buttonNegative: 'Cancelar',
+
+              buttonPositive: 'OK',
+            },
+          );
+
+          setIsPermissionGranted(
+            granted === PermissionsAndroid.RESULTS.GRANTED,
+          );
+        } else {
+          // Manejar permisos para iOS si es necesario
+
+          setIsPermissionGranted(true);
+        }
+      } catch (err) {
+        console.warn(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkPermissions();
+  }, []);
+
+  if (loading) {
+    return (
+      <View style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
+        <Text>Cargando...</Text>
+      </View>
+    );
+  }
+
+  if (!isPermissionGranted) {
+    return (
+      <View style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
+        <Text>Se requiere permiso de ubicación para usar la aplicación</Text>
+      </View>
+    );
+  }
+
   return (
     <SafeAreaProvider>
       <AuthProvider>
@@ -159,5 +225,4 @@ function App(): React.JSX.Element {
     </SafeAreaProvider>
   );
 }
-
 export default App;
