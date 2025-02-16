@@ -10,6 +10,40 @@ import {
 
 // En tripService
 export const tripRequestService = {
+  async createBroadcastRequest(requestData) {
+    const {data: request, error} = await supabase
+      .from('trip_requests')
+      .insert({
+        operator_id: requestData.operator_id,
+        origin: requestData.origin,
+        destination: requestData.destination,
+        price: requestData.price,
+        origin_lat: requestData.origin_lat,
+        origin_lng: requestData.origin_lng,
+        destination_lat: requestData.destination_lat,
+        destination_lng: requestData.destination_lng,
+        search_radius: requestData.search_radius,
+        observations: requestData.observations, // Add this field
+        status: requestData.status,
+      })
+      .single();
+
+    if (error) throw error;
+    return request;
+  },
+
+  // Modificar el método para obtener solicitudes pendientes
+  async getDriverPendingRequests(driverId, driverLat, driverLng) {
+    const {data, error} = await supabase.rpc('get_nearby_requests', {
+      driver_latitude: driverLat,
+      driver_longitude: driverLng,
+      p_driver_id: driverId,
+    });
+
+    if (error) throw error;
+    return data;
+  },
+
   async createRequest(requestData: {
     driver_id: string;
     operator_id: string;
@@ -40,26 +74,8 @@ export const tripRequestService = {
     return data;
   },
 
-  async getDriverPendingRequests(driverId: string) {
-    const {data, error} = await supabase
-      .from('trip_requests')
-      .select(
-        `
-        *,
-        operator_profiles (
-          first_name,
-          last_name
-        )
-      `,
-      )
-      .eq('driver_id', driverId)
-      .eq('status', 'pending');
-
-    if (error) throw error;
-    return data;
-  },
-
   async convertRequestToTrip(requestId: string) {
+    // First get the full request details
     const {data: request, error: requestError} = await supabase
       .from('trip_requests')
       .select('*')
@@ -68,11 +84,16 @@ export const tripRequestService = {
 
     if (requestError) throw requestError;
 
+    // Include all location data in tripData
     const tripData = {
       driver_id: request.driver_id,
       operator_id: request.operator_id,
       origin: request.origin,
       destination: request.destination,
+      origin_lat: request.origin_lat,
+      origin_lng: request.origin_lng,
+      destination_lat: request.destination_lat,
+      destination_lng: request.destination_lng,
       price: request.price,
       status: 'in_progress',
     };
@@ -80,10 +101,23 @@ export const tripRequestService = {
     const {data: trip, error: tripError} = await supabase
       .from('trips')
       .insert(tripData)
+      .select('*')
       .single();
 
     if (tripError) throw tripError;
     return trip;
+  },
+
+  async updateTripStatus(tripId: string, status: string) {
+    const {data, error} = await supabase
+      .from('trips')
+      .update({status})
+      .eq('id', tripId)
+      .select('*') // Add this to return the updated trip
+      .single();
+
+    if (error) throw error;
+    return data;
   },
 };
 
@@ -93,10 +127,10 @@ export const authService = {
       .from('users')
       .select(
         `
-        *,
-        driver_profiles(*),
-        operator_profiles(*)
-      `,
+          *,
+          driver_profiles(*),
+          operator_profiles(*)
+        `,
       )
       .eq('phone_number', phone_number)
       .eq('pin', pin)
@@ -202,12 +236,12 @@ export const driverService = {
       .from('trips')
       .select(
         `
-        *,
-        operator_profiles (
-          first_name,
-          last_name
-        )
-      `,
+          *,
+          operator_profiles (
+            first_name,
+            last_name
+          )
+        `,
       )
       .eq('driver_id', driverId)
       .in('status', ['pending', 'in_progress']);
@@ -232,11 +266,11 @@ export const operatorService = {
       .from('driver_profiles')
       .select(
         `
-        *,
-        users!inner (
-          active
-        )
-      `,
+          *,
+          users!inner (
+            active
+          )
+        `,
       )
       .eq('users.active', true)
       .eq('is_on_duty', true)
@@ -266,13 +300,13 @@ export const operatorService = {
       .from('trips')
       .select(
         `
-        *,
-        driver_profiles (
-          first_name,
-          last_name,
-          vehicle
-        )
-      `,
+          *,
+          driver_profiles (
+            first_name,
+            last_name,
+            vehicle
+          )
+        `,
       )
       .eq('status', 'pending');
 

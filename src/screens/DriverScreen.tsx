@@ -10,9 +10,21 @@ import {
   Alert,
   FlatList,
 } from 'react-native';
-import MapView, {PROVIDER_DEFAULT} from 'react-native-maps';
+
+import MapView, {
+  PROVIDER_DEFAULT,
+  Polyline,
+  UrlTile,
+  Marker,
+} from 'react-native-maps';
 import Geolocation from '@react-native-community/geolocation';
 import {driverService, tripRequestService} from '../services/api';
+import {
+  MapPinIcon,
+  Navigation2Icon,
+  FlagIcon,
+  UserIcon,
+} from 'lucide-react-native';
 
 const DriverHomeScreen = ({user}) => {
   const [position, setPosition] = useState(null);
@@ -20,6 +32,44 @@ const DriverHomeScreen = ({user}) => {
   const mapRef = useRef(null);
   const [isOnDuty, setIsOnDuty] = useState(false);
   const [offlineMode, setOfflineMode] = useState(false);
+  const [activeTrip, setActiveTrip] = useState(null);
+  const [tripPhase, setTripPhase] = useState(null);
+  const [currentRoute, setCurrentRoute] = useState(null);
+
+  const calculateRoute = async (start, end) => {
+    try {
+      // OSRM espera las coordenadas en formato [longitude,latitude]
+      const response = await fetch(
+        `https://router.project-osrm.org/route/v1/driving/${start.longitude},${start.latitude};${end.longitude},${end.latitude}?overview=full&geometries=geojson`,
+      );
+
+      const data = await response.json();
+
+      if (data.code === 'Ok' && data.routes.length > 0) {
+        const route = data.routes[0];
+
+        // Convertir las coordenadas de GeoJSON [longitude,latitude] a [latitude,longitude]
+        const points = route.geometry.coordinates.map(coord => ({
+          latitude: coord[1],
+          longitude: coord[0],
+        }));
+
+        return {
+          distance: (route.distance / 1000).toFixed(1) + ' km', // Convertir metros a kilómetros
+          duration: Math.round(route.duration / 60) + ' min', // Convertir segundos a minutos
+          polyline: points,
+        };
+      }
+      throw new Error('No se pudo calcular la ruta');
+    } catch (error) {
+      console.error('Error calculating route:', error);
+      return {
+        distance: '0 km',
+        duration: '0 min',
+        polyline: [],
+      };
+    }
+  };
 
   const getCurrentPosition = () => {
     return new Promise((resolve, reject) => {
@@ -53,35 +103,150 @@ const DriverHomeScreen = ({user}) => {
       }, 30000);
     });
   };
+
   useEffect(() => {
     const fetchPendingRequests = async () => {
+      if (!position) {
+        console.log('No position available');
+        return;
+      }
+
       try {
+        console.log('Fetching requests with position:', {
+          lat: position.latitude,
+          lng: position.longitude,
+        });
+
         const requests = await tripRequestService.getDriverPendingRequests(
           user.id,
+          position.latitude,
+          position.longitude,
         );
+
+        console.log('Received requests:', requests);
         setPendingRequests(requests);
       } catch (error) {
         console.error('Error fetching requests:', error);
       }
     };
 
-    fetchPendingRequests();
-    // Establecer un intervalo para actualizar las solicitudes
-    const interval = setInterval(fetchPendingRequests, 10000);
-    return () => clearInterval(interval);
-  }, []);
+    if (isOnDuty) {
+      // Solo buscar solicitudes si está en servicio
+      fetchPendingRequests();
+      const interval = setInterval(fetchPendingRequests, 10000);
+      return () => clearInterval(interval);
+    }
+  }, [position, isOnDuty]); // Agregar position e isOnDuty como dependencias
 
   const handleRequestResponse = async (requestId, status) => {
     try {
       await tripRequestService.updateRequestStatus(requestId, status);
+
       if (status === 'accepted') {
-        await tripRequestService.convertRequestToTrip(requestId);
+        const tripDetails = await tripRequestService.convertRequestToTrip(
+          requestId,
+        );
+
+        if (
+          !tripDetails ||
+          !tripDetails.origin_lat ||
+          !tripDetails.origin_lng
+        ) {
+          throw new Error('Invalid trip details received');
+        }
+
+        setActiveTrip(tripDetails);
+        setTripPhase('toPickup');
+
+        if (position) {
+          const pickupLocation = {
+            latitude: tripDetails.origin_lat,
+            longitude: tripDetails.origin_lng,
+          };
+
+          // Calcular ruta al punto de recogida usando OSRM
+          const route = await calculateRoute(
+            {
+              latitude: position.latitude,
+              longitude: position.longitude,
+            },
+            pickupLocation,
+          );
+
+          setCurrentRoute(route);
+
+          // Agregar marcadores de inicio y fin a las coordenadas para el ajuste
+          const coordinates = [
+            {
+              latitude: position.latitude,
+              longitude: position.longitude,
+            },
+            ...route.polyline,
+            pickupLocation,
+          ];
+
+          mapRef.current?.fitToCoordinates(coordinates, {
+            edgePadding: {top: 50, right: 50, bottom: 50, left: 50},
+            animated: true,
+          });
+        }
+
         Alert.alert('Éxito', 'Viaje aceptado');
       }
+
       setPendingRequests(prev => prev.filter(req => req.id !== requestId));
     } catch (error) {
       console.error('Error handling request:', error);
-      Alert.alert('Error', 'No se pudo procesar la solicitud');
+      Alert.alert(
+        'Error',
+        'No se pudo procesar la solicitud. Por favor, intente nuevamente.',
+      );
+    }
+  };
+  const handleArrivalAtPickup = async () => {
+    try {
+      await tripRequestService.updateTripStatus(
+        activeTrip.id,
+        'pickup_reached',
+      );
+      setTripPhase('toDestination');
+
+      const startLocation = {
+        latitude: activeTrip.origin_lat,
+        longitude: activeTrip.origin_lng,
+      };
+
+      const endLocation = {
+        latitude: activeTrip.destination_lat,
+        longitude: activeTrip.destination_lng,
+      };
+
+      // Calcular ruta al destino usando OSRM
+      const route = await calculateRoute(startLocation, endLocation);
+      setCurrentRoute(route);
+
+      // Incluir todos los puntos de la ruta para un mejor ajuste del mapa
+      const coordinates = [startLocation, ...route.polyline, endLocation];
+
+      mapRef.current?.fitToCoordinates(coordinates, {
+        edgePadding: {top: 50, right: 50, bottom: 50, left: 50},
+        animated: true,
+      });
+    } catch (error) {
+      console.error('Error updating trip status:', error);
+      Alert.alert('Error', 'No se pudo actualizar el estado del viaje');
+    }
+  };
+  const handleTripCompletion = async () => {
+    try {
+      await tripRequestService.updateTripStatus(activeTrip.id, 'completed');
+      setActiveTrip(null);
+      setTripPhase(null);
+      setCurrentRoute(null); // Clear the route
+      Alert.alert('Éxito', 'Viaje completado exitosamente');
+    } catch (error) {
+      console.error('Error completing trip:', error);
+      Alert.alert('Error', 'No se pudo completar el viaje');
     }
   };
   useEffect(() => {
@@ -172,8 +337,12 @@ const DriverHomeScreen = ({user}) => {
     }
   };
 
+  // En DriverHomeScreen.js, modificar updateDriverLocation
   const updateDriverLocation = async newPosition => {
+    if (!isOnDuty) return; // No actualizar si no está en servicio
+
     try {
+      console.log('Updating location:', newPosition);
       await driverService.updateLocation(
         user.id,
         newPosition.latitude,
@@ -181,24 +350,15 @@ const DriverHomeScreen = ({user}) => {
       );
     } catch (error) {
       console.error('Error updating location:', error);
-      if (!offlineMode) {
-        Alert.alert(
-          'Error de conexión',
-          'No se pudo actualizar la ubicación. ¿Desea activar el modo offline?',
-          [
-            {
-              text: 'Sí',
-              onPress: () => setOfflineMode(true),
-            },
-            {
-              text: 'No',
-              style: 'cancel',
-            },
-          ],
-        );
-      }
     }
   };
+
+  // Agregar efecto para actualizar la ubicación cuando cambia la posición
+  useEffect(() => {
+    if (position && isOnDuty) {
+      updateDriverLocation(position);
+    }
+  }, [position, isOnDuty]);
 
   const toggleDutyStatus = async () => {
     try {
@@ -267,36 +427,113 @@ const DriverHomeScreen = ({user}) => {
 
   return (
     <View style={styles.container}>
-      {pendingRequests.length > 0 && (
-        <View style={styles.requestsPanel}>
-          <Text style={styles.requestsTitle}>Solicitudes Pendientes</Text>
-          <FlatList
-            data={pendingRequests}
-            renderItem={({item}) => (
-              <View style={styles.requestItem}>
-                <View>
-                  <Text>Origen: {item.origin}</Text>
-                  <Text>Destino: {item.destination}</Text>
-                  <Text>Precio: ${item.price}</Text>
-                  <Text>Operador: {item.operator_profiles.first_name}</Text>
-                </View>
-                <View style={styles.requestActions}>
-                  <TouchableOpacity
-                    style={[styles.actionButton, styles.acceptButton]}
-                    onPress={() => handleRequestResponse(item.id, 'accepted')}>
-                    <Text style={styles.buttonText}>Aceptar</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.actionButton, styles.rejectButton]}
-                    onPress={() => handleRequestResponse(item.id, 'rejected')}>
-                    <Text style={styles.buttonText}>Rechazar</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
+      {activeTrip ? (
+        <View style={styles.navigationPanel}>
+          <Text style={styles.navigationTitle}>
+            {tripPhase === 'toPickup'
+              ? 'Navegando al punto de recogida'
+              : 'Navegando al destino'}
+          </Text>
+
+          <View style={styles.tripDetails}>
+            <View style={styles.addressContainer}>
+              {tripPhase === 'toPickup' ? (
+                <>
+                  <MapPinIcon size={24} color="#3B82F6" />
+                  <Text style={styles.addressText}>
+                    Recoger en: {activeTrip.origin}
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <FlagIcon size={24} color="#22C55E" />
+                  <Text style={styles.addressText}>
+                    Destino: {activeTrip.destination}
+                  </Text>
+                </>
+              )}
+            </View>
+
+            {currentRoute && currentRoute.polyline && (
+              <>
+                <Polyline
+                  coordinates={currentRoute.polyline}
+                  strokeWidth={4}
+                  strokeColor="#2196F3"
+                  geodesic={true}
+                />
+                {activeTrip && (
+                  <>
+                    <Marker
+                      coordinate={{
+                        latitude: activeTrip.origin_lat,
+                        longitude: activeTrip.origin_lng,
+                      }}
+                      title="Punto de recogida"
+                    />
+                    <Marker
+                      coordinate={{
+                        latitude: activeTrip.destination_lat,
+                        longitude: activeTrip.destination_lng,
+                      }}
+                      title="Destino"
+                    />
+                  </>
+                )}
+              </>
             )}
-            keyExtractor={item => item.id}
-          />
+
+            <TouchableOpacity
+              style={styles.arrivalButton}
+              onPress={
+                tripPhase === 'toPickup'
+                  ? handleArrivalAtPickup
+                  : handleTripCompletion
+              }>
+              <Text style={styles.buttonText}>
+                {tripPhase === 'toPickup'
+                  ? 'He llegado al punto de recogida'
+                  : 'Finalizar viaje'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
+      ) : (
+        // Existing pending requests panel code...
+        pendingRequests.length > 0 && (
+          <View style={styles.requestsPanel}>
+            <Text style={styles.requestsTitle}>Solicitudes Pendientes</Text>
+            <FlatList
+              data={pendingRequests}
+              renderItem={({item}) => (
+                <View style={styles.requestItem}>
+                  <View>
+                    <Text>Origen: {item.origin}</Text>
+                    <Text>Destino: {item.destination}</Text>
+                    <Text>Precio: ${item.price}</Text>
+                  </View>
+                  <View style={styles.requestActions}>
+                    <TouchableOpacity
+                      style={[styles.actionButton, styles.acceptButton]}
+                      onPress={() =>
+                        handleRequestResponse(item.id, 'accepted')
+                      }>
+                      <Text style={styles.buttonText}>Aceptar</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.actionButton, styles.rejectButton]}
+                      onPress={() =>
+                        handleRequestResponse(item.id, 'rejected')
+                      }>
+                      <Text style={styles.buttonText}>Rechazar</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+              keyExtractor={item => item.id}
+            />
+          </View>
+        )
       )}
       <View style={styles.statusBar}>
         <View style={styles.statusItem}>
@@ -319,8 +556,41 @@ const DriverHomeScreen = ({user}) => {
         showsUserLocation={true}
         followsUserLocation={true}
         showsMyLocationButton={true}
-        maxZoomLevel={19}
-      />
+        maxZoomLevel={19}>
+        <UrlTile
+          urlTemplate="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          subdomains={['a', 'b', 'c']}
+          maximumZ={19}
+        />
+        {currentRoute && currentRoute.polyline && (
+          <>
+            <Polyline
+              coordinates={currentRoute.polyline}
+              strokeWidth={4}
+              strokeColor="#2196F3"
+              geodesic={true}
+            />
+            {activeTrip && (
+              <>
+                <Marker
+                  coordinate={{
+                    latitude: activeTrip.origin_lat,
+                    longitude: activeTrip.origin_lng,
+                  }}
+                  title="Punto de recogida"
+                />
+                <Marker
+                  coordinate={{
+                    latitude: activeTrip.destination_lat,
+                    longitude: activeTrip.destination_lng,
+                  }}
+                  title="Destino"
+                />
+              </>
+            )}
+          </>
+        )}
+      </MapView>
     </View>
   );
 };
@@ -409,6 +679,60 @@ const styles = StyleSheet.create({
   buttonText: {
     color: 'white',
     fontWeight: '500',
+  },
+  navigationPanel: {
+    position: 'absolute',
+    top: 80,
+    left: 10,
+    right: 10,
+    backgroundColor: 'white',
+    borderRadius: 10,
+    padding: 15,
+    zIndex: 1000,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  navigationTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 10,
+  },
+  tripDetails: {
+    gap: 12,
+  },
+  addressContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+  },
+  addressText: {
+    fontSize: 16,
+    color: '#333',
+    flex: 1,
+  },
+  arrivalButton: {
+    backgroundColor: '#4CAF50',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  routeInfo: {
+    backgroundColor: '#f0f0f0',
+    padding: 8,
+    borderRadius: 4,
+    marginVertical: 8,
+  },
+  routeInfoText: {
+    fontSize: 14,
+    color: '#666',
   },
 });
 

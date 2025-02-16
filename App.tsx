@@ -13,7 +13,6 @@ import AdminScreen from './src/screens/AdminScreen';
 import DriverHomeScreen from './src/screens/DriverScreen';
 import OperatorHomeScreen from './src/screens/OperatorScreen';
 import {PermissionsAndroid, Platform} from 'react-native';
-import NotificationService from './src/services/notifications';
 import {View} from 'react-native';
 import {Text} from 'react-native';
 import {useEffect, useState} from 'react';
@@ -41,9 +40,6 @@ function AdminTabs() {
 }
 function DriverTabs() {
   const {user} = useAuthContext();
-
-  // Iniciar el servicio de notificaciones
-  NotificationService.startNotificationService(user?.id);
 
   return (
     <Tab.Navigator
@@ -97,7 +93,7 @@ function OperatorTabs() {
         name="OperatorHome"
         component={() => <OperatorHomeScreen user={user} />}
         options={{
-          title: 'Inicio',
+          title: 'Operador Panel',
           tabBarIcon: ({color, size}) => <Users color={color} size={size} />,
         }}
       />

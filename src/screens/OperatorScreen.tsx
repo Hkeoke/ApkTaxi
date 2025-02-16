@@ -1,32 +1,27 @@
-import React, {useState, useEffect, useRef} from 'react';
-import 'react-native-get-random-values';
+import React, {useState, useRef, useEffect} from 'react';
 import {
   View,
   Text,
-  StyleSheet,
-  FlatList,
   TouchableOpacity,
-  SafeAreaView,
-  Animated,
   Alert,
   TextInput,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  Keyboard,
+  SafeAreaView,
   Modal,
-  ActivityIndicator,
+  StyleSheet,
+  Animated, // Add this
+  ActivityIndicator, // Also add this since it's used in the code
+  FlatList,
 } from 'react-native';
-import MapView, {Marker, PROVIDER_DEFAULT} from 'react-native-maps';
+import MapView, {Marker, Circle, PROVIDER_DEFAULT} from 'react-native-maps';
+import {X, Car} from 'lucide-react-native';
 
-import {Car, Phone, Star, Clock, X} from 'lucide-react-native';
+//import {Car, Phone, Star, Clock, X} from 'lucide-react-native';
 import {driverService, tripRequestService} from '../services/api';
 
 const OperatorHomeScreen = ({user}) => {
   const [drivers, setDrivers] = useState([]);
   const [selectedDriver, setSelectedDriver] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const slideAnim = useRef(new Animated.Value(-300)).current;
   const mapRef = useRef(null);
   const [showLocationModal, setShowLocationModal] = useState(false);
@@ -34,6 +29,7 @@ const OperatorHomeScreen = ({user}) => {
   const [selectedLocation, setSelectedLocation] = useState(null);
   const [originCoords, setOriginCoords] = useState(null);
   const [destinationCoords, setDestinationCoords] = useState(null);
+  const [searchRadius, setSearchRadius] = useState(3000);
 
   const [region, setRegion] = useState({
     latitude: 23.1136,
@@ -46,26 +42,8 @@ const OperatorHomeScreen = ({user}) => {
     origin: '',
     destination: '',
     price: '',
+    observations: '',
   });
-  useEffect(() => {
-    const keyboardDidShowListener = Keyboard.addListener(
-      'keyboardDidShow',
-      () => {
-        setKeyboardVisible(true);
-      },
-    );
-    const keyboardDidHideListener = Keyboard.addListener(
-      'keyboardDidHide',
-      () => {
-        setKeyboardVisible(false);
-      },
-    );
-
-    return () => {
-      keyboardDidShowListener.remove();
-      keyboardDidHideListener.remove();
-    };
-  }, []);
   const handleMapPress = event => {
     const {coordinate} = event.nativeEvent;
     setSelectedLocation(coordinate);
@@ -78,6 +56,51 @@ const OperatorHomeScreen = ({user}) => {
       500,
     );
   };
+
+  const mapStyle = [
+    {
+      elementType: 'geometry',
+      stylers: [
+        {
+          color: '#f5f5f5',
+        },
+      ],
+    },
+    {
+      elementType: 'labels.text.fill',
+      stylers: [
+        {
+          color: '#616161',
+        },
+      ],
+    },
+    {
+      elementType: 'labels.text.stroke',
+      stylers: [
+        {
+          color: '#f5f5f5',
+        },
+      ],
+    },
+    {
+      featureType: 'road',
+      elementType: 'geometry',
+      stylers: [
+        {
+          color: '#ffffff',
+        },
+      ],
+    },
+    {
+      featureType: 'water',
+      elementType: 'geometry',
+      stylers: [
+        {
+          color: '#c9c9c9',
+        },
+      ],
+    },
+  ];
 
   // Update GooglePlacesAutocomplete configuration
   const [searchQuery, setSearchQuery] = useState('');
@@ -183,49 +206,44 @@ const OperatorHomeScreen = ({user}) => {
 
   const handleSendRequest = async () => {
     try {
-      if (!selectedDriver) return;
+      if (!originCoords || !destinationCoords || !requestForm.price) {
+        Alert.alert(
+          'Error',
+          'Por favor complete todos los campos obligatorios',
+        );
+        return;
+      }
 
-      await tripRequestService.createRequest({
-        driver_id: selectedDriver.id,
+      const requestData = {
         operator_id: user.id,
         origin: requestForm.origin,
         destination: requestForm.destination,
         price: Number(requestForm.price),
-      });
+        origin_lat: originCoords.latitude,
+        origin_lng: originCoords.longitude,
+        destination_lat: destinationCoords.latitude,
+        destination_lng: destinationCoords.longitude,
+        search_radius: searchRadius,
+        observations: requestForm.observations,
+        status: 'pending', // Asegurarse de que esté en estado pending
+      };
 
-      Alert.alert('Éxito', 'Solicitud enviada al chofer');
-      hideDriverInfo();
-      Keyboard.dismiss();
+      await tripRequestService.createBroadcastRequest(requestData);
+
+      Alert.alert('Éxito', 'Solicitud enviada a choferes cercanos');
+      setRequestForm({
+        origin: '',
+        destination: '',
+        price: '',
+        observations: '', // Reset observations
+      });
+      setOriginCoords(null);
+      setDestinationCoords(null);
     } catch (error) {
       console.error('Error sending request:', error);
       Alert.alert('Error', 'No se pudo enviar la solicitud');
     }
   };
-
-  const mapStyle = [
-    {
-      elementType: 'geometry',
-      stylers: [{color: '#f5f5f5'}],
-    },
-    {
-      elementType: 'labels.text.fill',
-      stylers: [{color: '#616161'}],
-    },
-    {
-      elementType: 'labels.text.stroke',
-      stylers: [{color: '#f5f5f5'}],
-    },
-    {
-      featureType: 'road',
-      elementType: 'geometry',
-      stylers: [{color: '#ffffff'}],
-    },
-    {
-      featureType: 'water',
-      elementType: 'geometry',
-      stylers: [{color: '#c9c9c9'}],
-    },
-  ];
 
   useEffect(() => {
     const fetchDrivers = async () => {
@@ -317,241 +335,173 @@ const OperatorHomeScreen = ({user}) => {
       Alert.alert('Error', 'Ocurrió un error al guardar la ubicación');
     }
   };
-  const renderDriverItem = ({item}) => (
-    <TouchableOpacity
-      style={[
-        styles.driverItem,
-        selectedDriver?.id === item.id && styles.selectedDriver,
-      ]}
-      onPress={() => showDriverInfo(item)}>
-      <View style={styles.driverItemContent}>
-        <Car size={24} color={item.is_on_duty ? '#4CAF50' : '#9E9E9E'} />
-        <View style={styles.driverInfo}>
-          <Text style={styles.driverName}>
-            {`${item.first_name} ${item.last_name}`}
-          </Text>
-          <Text style={styles.vehicleInfo}>{item.vehicle}</Text>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}>
-      <SafeAreaView style={styles.container}>
-        <View
-          style={[
-            styles.mapContainer,
-            keyboardVisible && styles.mapContainerSmall,
-          ]}>
+    <View style={styles.container}>
+      <MapView
+        ref={mapRef}
+        style={styles.map}
+        customMapStyle={mapStyle}
+        initialRegion={{
+          latitude: 23.1136,
+          longitude: -82.3666,
+          latitudeDelta: 0.1,
+          longitudeDelta: 0.1,
+        }}>
+        {/* Marcadores de origen y destino */}
+        {originCoords && (
+          <>
+            <Marker coordinate={originCoords} title="Origen" pinColor="green" />
+            <Circle
+              center={originCoords}
+              radius={searchRadius}
+              fillColor="rgba(0, 255, 0, 0.1)"
+              strokeColor="rgba(0, 255, 0, 0.3)"
+            />
+          </>
+        )}
+        {destinationCoords && (
+          <Marker
+            coordinate={destinationCoords}
+            title="Destino"
+            pinColor="red"
+          />
+        )}
+
+        {/* Marcadores de los choferes */}
+        {drivers.map(driver => (
+          <Marker
+            key={driver.id}
+            coordinate={{
+              latitude: Number(driver.latitude),
+              longitude: Number(driver.longitude),
+            }}
+            title={`${driver.first_name} ${driver.last_name}`}
+            description={`Vehículo: ${driver.vehicle}`}
+            pinColor="blue"
+            onPress={() => showDriverInfo(driver)}>
+            <View style={styles.markerContainer}>
+              <Text style={styles.markerText}>
+                <Car />
+              </Text>
+            </View>
+          </Marker>
+        ))}
+      </MapView>
+
+      <View style={styles.formContainer}>
+        <TouchableOpacity
+          style={styles.input}
+          onPress={() => {
+            setSearchMode('origin');
+            setShowLocationModal(true);
+          }}>
+          <Text
+            style={[
+              styles.inputText,
+              !requestForm.origin && styles.placeholder,
+            ]}>
+            {requestForm.origin || 'Seleccionar origen'}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.input}
+          onPress={() => {
+            setSearchMode('destination');
+            setShowLocationModal(true);
+          }}>
+          <Text
+            style={[
+              styles.inputText,
+              !requestForm.destination && styles.placeholder,
+            ]}>
+            {requestForm.destination || 'Seleccionar destino'}
+          </Text>
+        </TouchableOpacity>
+
+        <TextInput
+          style={styles.input}
+          placeholder="Precio"
+          placeholderTextColor="#999"
+          value={requestForm.price}
+          keyboardType="numeric"
+          onChangeText={text =>
+            setRequestForm(prev => ({...prev, price: text}))
+          }
+        />
+
+        <TextInput
+          style={[styles.input, styles.observationsInput]}
+          placeholder="Observaciones (opcional)"
+          placeholderTextColor="#999"
+          value={requestForm.observations}
+          multiline={true}
+          numberOfLines={3}
+          onChangeText={text =>
+            setRequestForm(prev => ({...prev, observations: text}))
+          }
+        />
+
+        <TouchableOpacity
+          style={styles.requestButton}
+          onPress={handleSendRequest}>
+          <Text style={styles.requestButtonText}>Enviar Solicitud</Text>
+        </TouchableOpacity>
+      </View>
+      <Modal
+        visible={showLocationModal}
+        animationType="slide"
+        onRequestClose={() => setShowLocationModal(false)}>
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>
+              Seleccionar {searchMode === 'origin' ? 'origen' : 'destino'}
+            </Text>
+            <TouchableOpacity
+              onPress={() => setShowLocationModal(false)}
+              style={styles.closeButton}>
+              <X size={24} color="#000" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.searchContainer}>
+            {renderLocationSearchInput()}
+          </View>
+
+          <Text style={styles.orText}>- O -</Text>
+          <Text style={styles.selectMapText}>
+            Selecciona una ubicación en el mapa
+          </Text>
+
           <MapView
-            ref={mapRef}
-            style={styles.map}
-            provider={PROVIDER_DEFAULT}
+            style={styles.modalMap}
             customMapStyle={mapStyle}
+            provider={PROVIDER_DEFAULT}
             region={region}
-            onRegionChangeComplete={setRegion}
             onPress={handleMapPress}
-            showsUserLocation={true}
-            showsMyLocationButton={true}
-            maxZoomLevel={19}>
-            {drivers.map(driver => (
+            showsUserLocation={true}>
+            {selectedLocation && (
               <Marker
-                key={driver.id}
-                coordinate={{
-                  latitude: Number(driver.latitude),
-                  longitude: Number(driver.longitude),
-                }}
-                onPress={() => showDriverInfo(driver)}>
-                <View style={styles.markerContainer}>
-                  <Car
-                    size={12}
-                    color={driver.is_on_duty ? '#4CAF50' : '#9E9E9E'}
-                  />
-                </View>
-              </Marker>
-            ))}
-            {originCoords && (
-              <Marker
-                coordinate={{
-                  latitude: originCoords.latitude,
-                  longitude: originCoords.longitude,
-                }}
-                pinColor="green"
-                title="Origen"
-              />
-            )}
-            {destinationCoords && (
-              <Marker
-                coordinate={{
-                  latitude: destinationCoords.latitude,
-                  longitude: destinationCoords.longitude,
-                }}
-                pinColor="red"
-                title="Destino"
+                coordinate={selectedLocation}
+                draggable
+                onDragEnd={e => setSelectedLocation(e.nativeEvent.coordinate)}
               />
             )}
           </MapView>
-        </View>
 
-        <View
-          style={[
-            styles.driversList,
-            keyboardVisible && styles.driversListSmall,
-          ]}>
-          <Text style={styles.listTitle}>Choferes Disponibles</Text>
-          {loading ? (
-            <Text style={styles.loadingText}>Cargando choferes...</Text>
-          ) : (
-            <FlatList
-              data={drivers}
-              renderItem={renderDriverItem}
-              keyExtractor={item => item.id}
-              contentContainerStyle={styles.listContent}
-            />
-          )}
-        </View>
-
-        {selectedDriver && (
-          <Animated.View
+          <TouchableOpacity
             style={[
-              styles.driverPanel,
-              {
-                transform: [{translateY: slideAnim}],
-              },
-            ]}>
-            <ScrollView style={styles.panelScrollView}>
-              <View style={styles.panelHeader}>
-                <Text style={styles.panelTitle}>Información del Chofer</Text>
-                <TouchableOpacity
-                  onPress={hideDriverInfo}
-                  style={styles.closeButton}>
-                  <X size={24} color="#000" />
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.panelContent}>
-                {/* Driver details */}
-                <View style={styles.driverDetailRow}>
-                  <Car size={20} color="#666" />
-                  <Text style={styles.detailText}>
-                    {selectedDriver.vehicle}
-                  </Text>
-                </View>
-
-                <View style={styles.driverDetailRow}>
-                  <Phone size={20} color="#666" />
-                  <Text style={styles.detailText}>
-                    {selectedDriver.phone_number}
-                  </Text>
-                </View>
-
-                <View style={styles.driverDetailRow}>
-                  <Clock size={20} color="#666" />
-                  <Text style={styles.detailText}>
-                    {selectedDriver.is_on_duty
-                      ? 'En servicio'
-                      : 'Fuera de servicio'}
-                  </Text>
-                </View>
-
-                {/* Form inputs */}
-                <TouchableOpacity
-                  style={styles.input}
-                  onPress={() => {
-                    setSearchMode('origin');
-                    setShowLocationModal(true);
-                  }}>
-                  <Text style={styles.inputText}>
-                    {requestForm.origin || 'Seleccionar origen'}
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.input}
-                  onPress={() => {
-                    setSearchMode('destination');
-                    setShowLocationModal(true);
-                  }}>
-                  <Text style={styles.inputText}>
-                    {requestForm.destination || 'Seleccionar destino'}
-                  </Text>
-                </TouchableOpacity>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Precio"
-                  placeholderTextColor="#999"
-                  value={requestForm.price}
-                  keyboardType="numeric"
-                  onChangeText={text =>
-                    setRequestForm(prev => ({...prev, price: text}))
-                  }
-                />
-
-                <TouchableOpacity
-                  style={styles.requestButton}
-                  onPress={handleSendRequest}>
-                  <Text style={styles.requestButtonText}>Enviar Solicitud</Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-          </Animated.View>
-        )}
-        <Modal
-          visible={showLocationModal}
-          animationType="slide"
-          onRequestClose={() => setShowLocationModal(false)}>
-          <SafeAreaView style={styles.modalContainer}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                Seleccionar {searchMode === 'origin' ? 'origen' : 'destino'}
-              </Text>
-              <TouchableOpacity
-                onPress={() => setShowLocationModal(false)}
-                style={styles.closeButton}>
-                <X size={24} color="#000" />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.searchContainer}>
-              {renderLocationSearchInput()}
-            </View>
-
-            <Text style={styles.orText}>- O -</Text>
-            <Text style={styles.selectMapText}>
-              Selecciona una ubicación en el mapa
-            </Text>
-
-            <MapView
-              style={styles.modalMap}
-              provider={PROVIDER_DEFAULT}
-              region={region}
-              onPress={handleMapPress}
-              showsUserLocation={true}>
-              {selectedLocation && (
-                <Marker
-                  coordinate={selectedLocation}
-                  draggable
-                  onDragEnd={e => setSelectedLocation(e.nativeEvent.coordinate)}
-                />
-              )}
-            </MapView>
-
-            <TouchableOpacity
-              style={[
-                styles.confirmButton,
-                !selectedLocation && styles.confirmButtonDisabled,
-              ]}
-              onPress={confirmLocationSelection}
-              disabled={!selectedLocation}>
-              <Text style={styles.confirmButtonText}>Confirmar ubicación</Text>
-            </TouchableOpacity>
-          </SafeAreaView>
-        </Modal>
-      </SafeAreaView>
-    </KeyboardAvoidingView>
+              styles.confirmButton,
+              !selectedLocation && styles.confirmButtonDisabled,
+            ]}
+            onPress={confirmLocationSelection}
+            disabled={!selectedLocation}>
+            <Text style={styles.confirmButtonText}>Confirmar ubicación</Text>
+          </TouchableOpacity>
+        </SafeAreaView>
+      </Modal>
+    </View>
   );
 };
 
@@ -632,22 +582,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
   },
-  driverPanel: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'white',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: {width: 0, height: -4},
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    maxHeight: Platform.OS === 'ios' ? '70%' : '80%',
-  },
+
   confirmButtonDisabled: {
     backgroundColor: '#ccc',
   },
@@ -683,32 +618,7 @@ const styles = StyleSheet.create({
     color: '#333',
     flex: 1,
   },
-  input: {
-    backgroundColor: '#f5f5f5',
-    borderRadius: 10,
-    padding: 15,
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    color: '#333',
-  },
-  requestButton: {
-    backgroundColor: '#4CAF50',
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 24,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: {width: 0, height: 2},
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  requestButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-  },
+
   listContent: {
     flexGrow: 1,
   },
@@ -769,10 +679,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  inputText: {
-    fontSize: 16,
-    color: '#333',
-  },
   searchContainer: {
     padding: 15,
 
@@ -813,6 +719,66 @@ const styles = StyleSheet.create({
     color: '#666',
 
     padding: 10,
+  },
+  formContainer: {
+    position: 'absolute',
+    bottom: 20,
+    left: 20,
+    right: 20,
+    backgroundColor: 'white',
+    borderRadius: 25,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+    alignItems: 'center',
+    gap: 10,
+  },
+  input: {
+    width: '100%',
+    backgroundColor: '#f8f9fa',
+    borderRadius: 15,
+    padding: 15,
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    color: '#333',
+    marginBottom: 5,
+  },
+  inputText: {
+    fontSize: 16,
+    color: '#666',
+  },
+  requestButton: {
+    backgroundColor: '#4CAF50',
+    padding: 16,
+    borderRadius: 15,
+    alignItems: 'center',
+    width: '100%',
+    marginTop: 10,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 2},
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  requestButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  placeholder: {
+    color: '#999',
+  },
+  observationsInput: {
+    height: 80, // Make it taller for multiple lines
+    textAlignVertical: 'top', // Start text from top
+    paddingTop: 12, // Add some padding at the top
   },
 });
 export default OperatorHomeScreen;
