@@ -20,7 +20,7 @@ export default function LoginScreen() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [pin, setPin] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const {setUser} = useAuthContext();
+  const {login} = useAuthContext();
 
   const handleLogin = async () => {
     if (!phoneNumber || !pin) {
@@ -30,8 +30,7 @@ export default function LoginScreen() {
 
     try {
       setIsLoading(true);
-      const userData = await authService.login(phoneNumber, pin);
-      await setUser(userData);
+      await login(phoneNumber, pin);
     } catch (error) {
       console.error('Login error:', error);
       Alert.alert(

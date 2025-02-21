@@ -1,9 +1,11 @@
 // NotificationService.js
 import notifee, {AndroidImportance, EventType} from '@notifee/react-native';
+import {AppState} from 'react-native';
 import {tripRequestService} from './api';
 
 class NotificationService {
   static pollingInterval = null;
+  static appStateSubscription = null;
 
   static async createNotificationChannel() {
     return await notifee.createChannel({
@@ -18,88 +20,97 @@ class NotificationService {
 
   static async checkNotificationPermission() {
     const settings = await notifee.requestPermission();
-    return settings.authorizationStatus >= 1;
+    if (settings.authorizationStatus < 1) {
+      console.log('No se tienen permisos de notificación');
+      return false;
+    }
+    return true;
   }
 
-  // Método para iniciar el servicio de notificaciones
   static async startNotificationService(driverId) {
     try {
-      // Verificar permisos
-      const hasPermission = await this.checkNotificationPermission();
-      if (!hasPermission) {
-        console.log('No notification permissions');
+      if (!driverId) {
+        console.error('No se proporcionó ID del chofer');
         return;
       }
 
-      // Crear canal
+      const hasPermission = await this.checkNotificationPermission();
+      if (!hasPermission) {
+        console.error('No hay permisos de notificación');
+        return;
+      }
+
       await this.createNotificationChannel();
 
-      // Iniciar polling de solicitudes
+      // Verificar si ya hay un polling activo
+      if (this.pollingInterval) {
+        clearInterval(this.pollingInterval);
+      }
+
+      // Hacer la primera verificación inmediatamente
+      await this.checkForNewRequests(driverId);
+
+      // Iniciar polling
       this.startPolling(driverId);
 
-      // Configurar manejador en background
-      this.setupBackgroundHandler();
+      // Configurar AppState
+      this.setupAppStateListener(driverId);
+
+      console.log('Servicio de notificaciones iniciado para chofer:', driverId);
     } catch (error) {
-      console.error('Error starting notification service:', error);
+      console.error('Error al iniciar servicio de notificaciones:', error);
     }
   }
 
-  // Método para detener el servicio
-  static stopNotificationService() {
-    if (this.pollingInterval) {
-      clearInterval(this.pollingInterval);
-      this.pollingInterval = null;
-    }
-  }
-
-  // Método para hacer polling de solicitudes
-  static startPolling(driverId) {
-    // Limpiar intervalo existente si hay uno
-    if (this.pollingInterval) {
-      clearInterval(this.pollingInterval);
-    }
-
-    // Hacer la primera verificación inmediatamente
-    this.checkForNewRequests(driverId);
-
-    // Configurar el intervalo de polling (cada 10 segundos)
-    this.pollingInterval = setInterval(() => {
-      this.checkForNewRequests(driverId);
-    }, 10000);
-  }
-
-  // Método para verificar nuevas solicitudes
   static async checkForNewRequests(driverId) {
     try {
+      if (!driverId) {
+        console.error('ID de chofer no válido');
+        return;
+      }
+
+      console.log('Verificando solicitudes cercanas para chofer:', driverId);
       const requests = await tripRequestService.getDriverPendingRequests(
         driverId,
       );
 
-      // Mostrar notificación para cada solicitud pendiente
+      if (!requests || requests.length === 0) {
+        console.log('No hay nuevas solicitudes cercanas');
+        return;
+      }
+
+      console.log(`Se encontraron ${requests.length} solicitudes cercanas`);
+
       for (const request of requests) {
-        await this.displayNotification({
-          id: request.id,
-          origin: request.origin,
-          destination: request.destination,
-          price: request.price,
-          operator: request.operator_profiles?.first_name,
-        });
+        if (request.distance <= request.search_radius) {
+          await this.displayNotification(request);
+          console.log('Notificación enviada para solicitud:', request.id);
+        }
       }
     } catch (error) {
-      console.error('Error checking for new requests:', error);
+      console.error('Error al verificar nuevas solicitudes:', error);
     }
   }
 
-  // Método para mostrar notificaciones
   static async displayNotification(request) {
     try {
+      if (!request || !request.id) {
+        console.error('Datos de solicitud inválidos');
+        return;
+      }
+
       const channelId = await this.createNotificationChannel();
       const notificationId = `trip_request_${request.id}_${Date.now()}`;
+
+      const distanceText =
+        request.distance >= 1000
+          ? `${(request.distance / 1000).toFixed(1)} km`
+          : `${Math.round(request.distance)} m`;
 
       await notifee.displayNotification({
         id: notificationId,
         title: '¡Nueva solicitud de viaje! 🚖',
-        body: `Origen: ${request.origin}\nDestino: ${request.destination}\nPrecio: $${request.price}\nOperador: ${request.operator}`,
+        body: `Origen: ${request.origin}\nDestino: ${request.destination}\nPrecio: $${request.price}\nDistancia: ${distanceText}\nOperador: ${request.operator_profiles?.first_name}`,
         android: {
           channelId,
           importance: AndroidImportance.HIGH,
@@ -130,12 +141,65 @@ class NotificationService {
 
       return notificationId;
     } catch (error) {
-      console.error('Error displaying notification:', error);
+      console.error('Error al mostrar notificación:', error);
+    }
+  }
+
+  static setupAppStateListener(driverId) {
+    if (this.appStateSubscription) {
+      this.appStateSubscription.remove();
+    }
+
+    this.appStateSubscription = AppState.addEventListener(
+      'change',
+      nextAppState => {
+        console.log('Estado de la app cambió a:', nextAppState);
+
+        if (nextAppState === 'active') {
+          console.log('App en primer plano - reiniciando polling');
+          this.startPolling(driverId);
+        } else if (nextAppState === 'background') {
+          console.log('App en segundo plano - ajustando intervalo');
+          this.adjustPollingInterval(driverId, 30000);
+        }
+      },
+    );
+  }
+
+  static startPolling(driverId) {
+    this.adjustPollingInterval(driverId, 10000); // 10 segundos en primer plano
+  }
+
+  static adjustPollingInterval(driverId, interval) {
+    if (this.pollingInterval) {
+      clearInterval(this.pollingInterval);
+    }
+
+    this.pollingInterval = setInterval(() => {
+      this.checkForNewRequests(driverId);
+    }, interval);
+  }
+
+  static async stopNotificationService() {
+    try {
+      if (this.pollingInterval) {
+        clearInterval(this.pollingInterval);
+        this.pollingInterval = null;
+      }
+
+      if (this.appStateSubscription) {
+        this.appStateSubscription.remove();
+        this.appStateSubscription = null;
+      }
+
+      console.log('Servicio de notificaciones detenido');
+    } catch (error) {
+      console.error('Error al detener servicio de notificaciones:', error);
     }
   }
 
   static async setupBackgroundHandler() {
-    notifee.onBackgroundEvent(async ({type, detail}) => {
+    return notifee.onBackgroundEvent(async ({type, detail}) => {
       const {notification, pressAction} = detail;
 
       if (type === EventType.ACTION_PRESS && pressAction) {

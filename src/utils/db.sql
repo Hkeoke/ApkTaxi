@@ -22,7 +22,8 @@ create table driver_profiles (
   balance decimal default 0,
   is_on_duty boolean default false,  -- Indica si el chofer está en servicio
   last_duty_change timestamp with time zone,  -- Registra la última vez que cambió su estado
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  vehicle_type text CHECK (vehicle_type IN ('2_ruedas', '4_ruedas')) NOT NULL DEFAULT '4_ruedas'
 );
 
 -- Tabla de perfiles de operadores (sin cambios)
@@ -86,6 +87,6 @@ with new_driver as (
   )
   returning id
 )
-insert into driver_profiles (id, first_name, last_name, license_number, phone_number, vehicle)
-select id, 'Carlos', 'García', 'LIC789012', '+51999888666', 'Toyota Corolla'
+insert into driver_profiles (id, first_name, last_name, license_number, phone_number, vehicle, vehicle_type)
+select id, 'Carlos', 'García', 'LIC789012', '+51999888666', 'Toyota Corolla', '4_ruedas'
 from new_driver;

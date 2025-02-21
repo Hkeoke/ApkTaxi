@@ -1,4 +1,4 @@
-import React, {useState, useRef, useEffect} from 'react';
+import React, {useState, useRef, useEffect, useLayoutEffect} from 'react';
 import {
   View,
   Text,
@@ -13,23 +13,65 @@ import {
   FlatList,
 } from 'react-native';
 import MapView, {Marker, Circle, PROVIDER_DEFAULT} from 'react-native-maps';
-import {X, Car} from 'lucide-react-native';
+import {X, Car, Bike, Menu, Plus} from 'lucide-react-native';
+import Sidebar from '../components/Sidebar';
+import {useNavigation} from '@react-navigation/native';
 
 //import {Car, Phone, Star, Clock, X} from 'lucide-react-native';
 import {driverService, tripRequestService} from '../services/api';
 
-const OperatorHomeScreen = ({user}) => {
-  const [drivers, setDrivers] = useState([]);
-  const [selectedDriver, setSelectedDriver] = useState(null);
+// Primero definimos algunas interfaces necesarias
+interface Driver {
+  id: string;
+  first_name: string;
+  last_name: string;
+  latitude: string | number;
+  longitude: string | number;
+  vehicle: string;
+  vehicle_type: '2_ruedas' | '4_ruedas';
+}
+
+interface Location {
+  name: string;
+  latitude: number;
+  longitude: number;
+}
+
+interface OSMResult {
+  display_name: string;
+  lat: string;
+  lon: string;
+}
+
+interface User {
+  id: string;
+}
+
+interface Props {
+  user: User;
+}
+
+const OperatorHomeScreen: React.FC<Props> = ({user}) => {
+  const navigation = useNavigation();
+  const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null);
   const [loading, setLoading] = useState(true);
   const slideAnim = useRef(new Animated.Value(-300)).current;
-  const mapRef = useRef(null);
+  const mapRef = useRef<MapView | null>(null);
   const [showLocationModal, setShowLocationModal] = useState(false);
-  const [searchMode, setSearchMode] = useState(null); // 'origin' o 'destination'
-  const [selectedLocation, setSelectedLocation] = useState(null);
-  const [originCoords, setOriginCoords] = useState(null);
-  const [destinationCoords, setDestinationCoords] = useState(null);
+  const [searchMode, setSearchMode] = useState<'origin' | 'destination' | null>(
+    null,
+  );
+  const [selectedLocation, setSelectedLocation] = useState<Location | null>(
+    null,
+  );
+  const [originCoords, setOriginCoords] = useState<Location | null>(null);
+  const [destinationCoords, setDestinationCoords] = useState<Location | null>(
+    null,
+  );
   const [searchRadius, setSearchRadius] = useState(3000);
+  const [isSidebarVisible, setIsSidebarVisible] = useState(false);
+  const [showRequestForm, setShowRequestForm] = useState(false);
 
   const [region, setRegion] = useState({
     latitude: 23.1136,
@@ -44,14 +86,22 @@ const OperatorHomeScreen = ({user}) => {
     price: '',
     observations: '',
   });
-  const handleMapPress = event => {
-    const {coordinate} = event.nativeEvent;
-    setSelectedLocation(coordinate);
 
-    // Animate map to selected location
+  const handleMapPress = (event: any) => {
+    const {coordinate} = event.nativeEvent;
+    setSelectedLocation({
+      name: `${coordinate.latitude.toFixed(6)}, ${coordinate.longitude.toFixed(
+        6,
+      )}`,
+      latitude: coordinate.latitude,
+      longitude: coordinate.longitude,
+    });
+
     mapRef.current?.animateToRegion(
       {
         ...coordinate,
+        latitudeDelta: 0.001,
+        longitudeDelta: 0.001,
       },
       500,
     );
@@ -104,19 +154,22 @@ const OperatorHomeScreen = ({user}) => {
 
   // Update GooglePlacesAutocomplete configuration
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
+  const [searchResults, setSearchResults] = useState<OSMResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
   // Función debounce para no saturar las peticiones
-  const debounce = (func, delay) => {
-    let timeoutId;
-    return (...args) => {
+  const debounce = <T extends (...args: any[]) => void>(
+    func: T,
+    delay: number,
+  ) => {
+    let timeoutId: NodeJS.Timeout;
+    return (...args: Parameters<T>) => {
       clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => func.apply(this, args), delay);
+      timeoutId = setTimeout(() => func.apply(null, args), delay);
     };
   };
 
-  const searchLocations = async query => {
+  const searchLocations = async (query: string) => {
     if (!query) {
       setSearchResults([]);
       return;
@@ -147,13 +200,13 @@ const OperatorHomeScreen = ({user}) => {
 
   const debouncedSearch = debounce(searchLocations, 500);
 
-  const handleSearchChange = text => {
+  const handleSearchChange = (text: string) => {
     setSearchQuery(text);
     debouncedSearch(text);
   };
 
-  const handleOSMSelect = item => {
-    const location = {
+  const handleOSMSelect = (item: OSMResult) => {
+    const location: Location = {
       name: item.display_name,
       latitude: parseFloat(item.lat),
       longitude: parseFloat(item.lon),
@@ -225,7 +278,6 @@ const OperatorHomeScreen = ({user}) => {
         destination_lng: destinationCoords.longitude,
         search_radius: searchRadius,
         observations: requestForm.observations,
-        status: 'pending', // Asegurarse de que esté en estado pending
       };
 
       await tripRequestService.createBroadcastRequest(requestData);
@@ -235,10 +287,11 @@ const OperatorHomeScreen = ({user}) => {
         origin: '',
         destination: '',
         price: '',
-        observations: '', // Reset observations
+        observations: '',
       });
       setOriginCoords(null);
       setDestinationCoords(null);
+      setShowRequestForm(false);
     } catch (error) {
       console.error('Error sending request:', error);
       Alert.alert('Error', 'No se pudo enviar la solicitud');
@@ -274,7 +327,7 @@ const OperatorHomeScreen = ({user}) => {
     return () => clearInterval(interval);
   }, []);
 
-  const showDriverInfo = driver => {
+  const showDriverInfo = (driver: Driver) => {
     // Si el conductor ya está seleccionado, no hagas nada
     if (selectedDriver?.id === driver.id) return;
 
@@ -336,6 +389,26 @@ const OperatorHomeScreen = ({user}) => {
     }
   };
 
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerLeft: () => (
+        <TouchableOpacity
+          onPress={() => setIsSidebarVisible(true)}
+          style={{marginLeft: 15}}>
+          <Menu color="#0891b2" size={24} />
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation]);
+
+  const getVehicleIcon = (driver: Driver) => {
+    return driver.vehicle_type === '2_ruedas' ? (
+      <Bike color="#0891b2" size={24} />
+    ) : (
+      <Car color="#0891b2" size={24} />
+    );
+  };
+
   return (
     <View style={styles.container}>
       <MapView
@@ -380,75 +453,89 @@ const OperatorHomeScreen = ({user}) => {
             description={`Vehículo: ${driver.vehicle}`}
             pinColor="blue"
             onPress={() => showDriverInfo(driver)}>
-            <View style={styles.markerContainer}>
-              <Text style={styles.markerText}>
-                <Car />
-              </Text>
-            </View>
+            <View style={styles.markerContainer}>{getVehicleIcon(driver)}</View>
           </Marker>
         ))}
       </MapView>
 
-      <View style={styles.formContainer}>
-        <TouchableOpacity
-          style={styles.input}
-          onPress={() => {
-            setSearchMode('origin');
-            setShowLocationModal(true);
-          }}>
-          <Text
-            style={[
-              styles.inputText,
-              !requestForm.origin && styles.placeholder,
-            ]}>
-            {requestForm.origin || 'Seleccionar origen'}
-          </Text>
-        </TouchableOpacity>
+      {/* Botón flotante para mostrar el formulario */}
+      <TouchableOpacity
+        style={styles.floatingButton}
+        onPress={() => setShowRequestForm(true)}>
+        <Plus color="#fff" size={24} />
+      </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.input}
-          onPress={() => {
-            setSearchMode('destination');
-            setShowLocationModal(true);
-          }}>
-          <Text
-            style={[
-              styles.inputText,
-              !requestForm.destination && styles.placeholder,
-            ]}>
-            {requestForm.destination || 'Seleccionar destino'}
-          </Text>
-        </TouchableOpacity>
+      {showRequestForm && (
+        <>
+          <TouchableOpacity
+            style={styles.overlay}
+            activeOpacity={1}
+            onPress={() => setShowRequestForm(false)}
+          />
 
-        <TextInput
-          style={styles.input}
-          placeholder="Precio"
-          placeholderTextColor="#999"
-          value={requestForm.price}
-          keyboardType="numeric"
-          onChangeText={text =>
-            setRequestForm(prev => ({...prev, price: text}))
-          }
-        />
+          <View style={styles.formContainer}>
+            <TouchableOpacity
+              style={styles.input}
+              onPress={() => {
+                setSearchMode('origin');
+                setShowLocationModal(true);
+              }}>
+              <Text
+                style={[
+                  styles.inputText,
+                  !requestForm.origin && styles.placeholder,
+                ]}>
+                {requestForm.origin || 'Seleccionar origen'}
+              </Text>
+            </TouchableOpacity>
 
-        <TextInput
-          style={[styles.input, styles.observationsInput]}
-          placeholder="Observaciones (opcional)"
-          placeholderTextColor="#999"
-          value={requestForm.observations}
-          multiline={true}
-          numberOfLines={3}
-          onChangeText={text =>
-            setRequestForm(prev => ({...prev, observations: text}))
-          }
-        />
+            <TouchableOpacity
+              style={styles.input}
+              onPress={() => {
+                setSearchMode('destination');
+                setShowLocationModal(true);
+              }}>
+              <Text
+                style={[
+                  styles.inputText,
+                  !requestForm.destination && styles.placeholder,
+                ]}>
+                {requestForm.destination || 'Seleccionar destino'}
+              </Text>
+            </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.requestButton}
-          onPress={handleSendRequest}>
-          <Text style={styles.requestButtonText}>Enviar Solicitud</Text>
-        </TouchableOpacity>
-      </View>
+            <TextInput
+              style={styles.input}
+              placeholder="Precio"
+              placeholderTextColor="#999"
+              value={requestForm.price}
+              keyboardType="numeric"
+              onChangeText={text =>
+                setRequestForm(prev => ({...prev, price: text}))
+              }
+            />
+
+            <TextInput
+              style={[styles.input, styles.observationsInput]}
+              placeholder="Observaciones (opcional)"
+              placeholderTextColor="#999"
+              value={requestForm.observations}
+              multiline={true}
+              numberOfLines={3}
+              onChangeText={text =>
+                setRequestForm(prev => ({...prev, observations: text}))
+              }
+            />
+
+            <TouchableOpacity
+              style={styles.requestButton}
+              onPress={handleSendRequest}>
+              <Text style={styles.requestButtonText}>Enviar Solicitud</Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
+
       <Modal
         visible={showLocationModal}
         animationType="slide"
@@ -485,7 +572,16 @@ const OperatorHomeScreen = ({user}) => {
               <Marker
                 coordinate={selectedLocation}
                 draggable
-                onDragEnd={e => setSelectedLocation(e.nativeEvent.coordinate)}
+                onDragEnd={e => {
+                  const coordinate = e.nativeEvent.coordinate;
+                  setSelectedLocation({
+                    name: `${coordinate.latitude.toFixed(
+                      6,
+                    )}, ${coordinate.longitude.toFixed(6)}`,
+                    latitude: coordinate.latitude,
+                    longitude: coordinate.longitude,
+                  });
+                }}
               />
             )}
           </MapView>
@@ -501,6 +597,11 @@ const OperatorHomeScreen = ({user}) => {
           </TouchableOpacity>
         </SafeAreaView>
       </Modal>
+      <Sidebar
+        isVisible={isSidebarVisible}
+        onClose={() => setIsSidebarVisible(false)}
+        role="operador"
+      />
     </View>
   );
 };
@@ -720,6 +821,33 @@ const styles = StyleSheet.create({
 
     padding: 10,
   },
+  floatingButton: {
+    position: 'absolute',
+    bottom: 30,
+    right: 20,
+    backgroundColor: '#0891b2',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)', // Fondo semi-transparente
+  },
   formContainer: {
     position: 'absolute',
     bottom: 20,
@@ -738,6 +866,7 @@ const styles = StyleSheet.create({
     elevation: 5,
     alignItems: 'center',
     gap: 10,
+    zIndex: 2,
   },
   input: {
     width: '100%',
@@ -754,31 +883,30 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
   },
+  placeholder: {
+    color: '#999',
+  },
+  observationsInput: {
+    height: 80,
+    textAlignVertical: 'top',
+    paddingTop: 12,
+  },
   requestButton: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#0891b2',
     padding: 16,
     borderRadius: 15,
     alignItems: 'center',
     width: '100%',
     marginTop: 10,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: {width: 0, height: 2},
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
   },
   requestButtonText: {
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
   },
-  placeholder: {
-    color: '#999',
-  },
-  observationsInput: {
-    height: 80, // Make it taller for multiple lines
-    textAlignVertical: 'top', // Start text from top
-    paddingTop: 12, // Add some padding at the top
+  markerText: {
+    fontSize: 24,
+    color: '#0891b2',
   },
 });
 export default OperatorHomeScreen;

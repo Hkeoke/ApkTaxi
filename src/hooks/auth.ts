@@ -15,12 +15,15 @@ export function useAuth() {
 
   const loadUserFromStorage = async () => {
     try {
+      setLoading(true);
       const userString = await AsyncStorage.getItem(USER_STORAGE_KEY);
       if (userString) {
-        setUser(JSON.parse(userString));
+        const parsedUser = JSON.parse(userString);
+        console.log('Usuario cargado del storage:', parsedUser);
+        setUser(parsedUser);
       }
     } catch (error) {
-      console.error('Error loading user from storage:', error);
+      console.error('Error cargando usuario del storage:', error);
     } finally {
       setLoading(false);
     }
@@ -28,14 +31,17 @@ export function useAuth() {
 
   const updateUser = async (newUser: User | null) => {
     try {
+      console.log('Actualizando usuario:', newUser);
       if (newUser) {
         await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(newUser));
+        setUser(newUser);
       } else {
         await AsyncStorage.removeItem(USER_STORAGE_KEY);
+        setUser(null);
       }
-      setUser(newUser);
     } catch (error) {
-      console.error('Error updating user in storage:', error);
+      console.error('Error actualizando usuario:', error);
+      throw error;
     }
   };
 
@@ -44,7 +50,7 @@ export function useAuth() {
       await AsyncStorage.removeItem(USER_STORAGE_KEY);
       setUser(null);
     } catch (error) {
-      console.error('Error during logout:', error);
+      console.error('Error durante logout:', error);
       throw error;
     }
   };
@@ -52,7 +58,7 @@ export function useAuth() {
   return {
     user,
     loading,
-    setUser: updateUser,
+    updateUser,
     logout,
   };
 }

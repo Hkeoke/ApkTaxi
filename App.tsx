@@ -1,3 +1,4 @@
+import React from 'react';
 import {NavigationContainer} from '@react-navigation/native';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
@@ -16,6 +17,7 @@ import {PermissionsAndroid, Platform} from 'react-native';
 import {View} from 'react-native';
 import {Text} from 'react-native';
 import {useEffect, useState} from 'react';
+import OperatorTripsScreen from './src/screens/OperatorTripsScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -44,6 +46,7 @@ function DriverTabs() {
   return (
     <Tab.Navigator
       screenOptions={{
+        headerShown: true,
         tabBarStyle: {backgroundColor: '#ffffff'},
         tabBarActiveTintColor: '#0891b2',
         tabBarInactiveTintColor: '#64748b',
@@ -85,6 +88,7 @@ function OperatorTabs() {
   return (
     <Tab.Navigator
       screenOptions={{
+        headerShown: true,
         tabBarStyle: {backgroundColor: '#ffffff'},
         tabBarActiveTintColor: '#0891b2',
         tabBarInactiveTintColor: '#64748b',
@@ -93,28 +97,20 @@ function OperatorTabs() {
         name="OperatorHome"
         component={() => <OperatorHomeScreen user={user} />}
         options={{
-          title: 'Operador Panel',
+          title: 'Panel',
           tabBarIcon: ({color, size}) => <Users color={color} size={size} />,
         }}
       />
-      {/*<Tab.Screen
+      <Tab.Screen
         name="OperatorTrips"
-        component={OperatorTripsScreen}
+        component={() => <OperatorTripsScreen user={user} />}
         options={{
           title: 'Viajes',
-          tabBarIcon: ({ color, size }) => (
+          tabBarIcon: ({color, size}) => (
             <ClipboardList color={color} size={size} />
           ),
         }}
-      />*/}
-      {/*<Tab.Screen
-        name="OperatorProfile"
-        component={OperatorProfileScreen}
-        options={{
-          title: 'Perfil',
-          tabBarIcon: ({ color, size }) => <Users color={color} size={size} />,
-        }}
-      />*/}
+      />
     </Tab.Navigator>
   );
 }

@@ -10,38 +10,87 @@ import {
 
 // En tripService
 export const tripRequestService = {
-  async createBroadcastRequest(requestData) {
-    const {data: request, error} = await supabase
+  async createBroadcastRequest(requestData: any) {
+    const {data, error} = await supabase
       .from('trip_requests')
-      .insert({
-        operator_id: requestData.operator_id,
-        origin: requestData.origin,
-        destination: requestData.destination,
-        price: requestData.price,
-        origin_lat: requestData.origin_lat,
-        origin_lng: requestData.origin_lng,
-        destination_lat: requestData.destination_lat,
-        destination_lng: requestData.destination_lng,
-        search_radius: requestData.search_radius,
-        observations: requestData.observations, // Add this field
-        status: requestData.status,
-      })
-      .single();
-
-    if (error) throw error;
-    return request;
-  },
-
-  // Modificar el método para obtener solicitudes pendientes
-  async getDriverPendingRequests(driverId, driverLat, driverLng) {
-    const {data, error} = await supabase.rpc('get_nearby_requests', {
-      driver_latitude: driverLat,
-      driver_longitude: driverLng,
-      p_driver_id: driverId,
-    });
+      .insert([
+        {
+          ...requestData,
+          status: 'broadcasting', // Aseguramos que el estado sea 'broadcasting'
+        },
+      ])
+      .select();
 
     if (error) throw error;
     return data;
+  },
+
+  // Modificar el método para obtener solicitudes pendientes
+  async getDriverPendingRequests(driverId: string) {
+    // Primero obtenemos la ubicación actual del chofer
+    const {data: driverData, error: driverError} = await supabase
+      .from('driver_profiles')
+      .select('latitude, longitude')
+      .eq('id', driverId)
+      .single();
+
+    if (driverError) throw driverError;
+    if (!driverData?.latitude || !driverData?.longitude) {
+      console.log('Chofer sin ubicación actualizada');
+      return [];
+    }
+
+    // Usamos la función get_nearby_requests para obtener solicitudes cercanas
+    const {data, error} = await supabase
+      .from('trip_requests')
+      .select(
+        `
+        *,
+        operator:operator_id (
+          first_name,
+          last_name
+        )
+      `,
+      )
+      .eq('status', 'broadcasting');
+
+    if (error) {
+      console.error('Error al obtener solicitudes:', error);
+      throw error;
+    }
+
+    // Filtramos las solicitudes por distancia
+    const nearbyRequests = data?.filter(request => {
+      const distance = this.calculateDistance(
+        driverData.latitude,
+        driverData.longitude,
+        request.origin_lat,
+        request.origin_lng,
+      );
+      return distance <= request.search_radius;
+    });
+
+    return nearbyRequests || [];
+  },
+
+  // Función auxiliar para calcular distancia
+  calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
+    const R = 6371000; // Radio de la Tierra en metros
+    const phi1 = (lat1 * Math.PI) / 180;
+    const phi2 = (lat2 * Math.PI) / 180;
+    const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
+    const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
+
+    const a =
+      Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+      Math.cos(phi1) *
+        Math.cos(phi2) *
+        Math.sin(deltaLambda / 2) *
+        Math.sin(deltaLambda / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const d = R * c;
+
+    return d;
   },
 
   async createRequest(requestData: {
@@ -60,15 +109,12 @@ export const tripRequestService = {
     return data;
   },
 
-  async updateRequestStatus(
-    requestId: string,
-    status: 'accepted' | 'rejected',
-  ) {
+  async updateRequestStatus(requestId: string, status: string) {
     const {data, error} = await supabase
       .from('trip_requests')
       .update({status})
       .eq('id', requestId)
-      .single();
+      .select();
 
     if (error) throw error;
     return data;
@@ -140,6 +186,7 @@ export const authService = {
     if (error) throw error;
     if (!data) throw new Error('Usuario no encontrado');
 
+    console.log('Datos del usuario después del login:', data);
     return data as User;
   },
 

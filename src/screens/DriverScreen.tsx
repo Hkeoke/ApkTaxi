@@ -1,4 +1,4 @@
-import React, {useState, useRef, useEffect} from 'react';
+import React, {useState, useRef, useEffect, useLayoutEffect} from 'react';
 import {
   View,
   StyleSheet,
@@ -10,12 +10,14 @@ import {
   Alert,
   FlatList,
 } from 'react-native';
+import {useNavigation} from '@react-navigation/native';
 
 import MapView, {
   PROVIDER_DEFAULT,
   Polyline,
   UrlTile,
   Marker,
+  Region,
 } from 'react-native-maps';
 import Geolocation from '@react-native-community/geolocation';
 import {driverService, tripRequestService} from '../services/api';
@@ -24,19 +26,61 @@ import {
   Navigation2Icon,
   FlagIcon,
   UserIcon,
+  Menu,
 } from 'lucide-react-native';
+import Sidebar from '../components/Sidebar';
 
-const DriverHomeScreen = ({user}) => {
-  const [position, setPosition] = useState(null);
-  const [pendingRequests, setPendingRequests] = useState([]);
-  const mapRef = useRef(null);
+interface TripRequest {
+  id: string;
+  origin: string;
+  destination: string;
+  price: number;
+}
+
+interface Trip {
+  id: string;
+  origin: string;
+  destination: string;
+  origin_lat: number;
+  origin_lng: number;
+  destination_lat: number;
+  destination_lng: number;
+}
+
+interface Route {
+  distance: string;
+  duration: string;
+  polyline: Array<{
+    latitude: number;
+    longitude: number;
+  }>;
+}
+
+interface Position {
+  latitude: number;
+  longitude: number;
+  latitudeDelta: number;
+  longitudeDelta: number;
+}
+
+const DriverHomeScreen: React.FC<{user: {id: string}}> = ({user}) => {
+  const [position, setPosition] = useState<Position | null>(null);
+  const [pendingRequests, setPendingRequests] = useState<TripRequest[]>([]);
+  const mapRef = useRef<MapView | null>(null);
   const [isOnDuty, setIsOnDuty] = useState(false);
   const [offlineMode, setOfflineMode] = useState(false);
-  const [activeTrip, setActiveTrip] = useState(null);
-  const [tripPhase, setTripPhase] = useState(null);
-  const [currentRoute, setCurrentRoute] = useState(null);
+  const [activeTrip, setActiveTrip] = useState<Trip | null>(null);
+  const [tripPhase, setTripPhase] = useState<
+    'toPickup' | 'toDestination' | null
+  >(null);
+  const [currentRoute, setCurrentRoute] = useState<Route | null>(null);
+  const [isSidebarVisible, setIsSidebarVisible] = useState(false);
+  const navigation = useNavigation();
 
-  const calculateRoute = async (start, end) => {
+  const calculateRoute = async (
+    start: {latitude: number; longitude: number},
+    end: {latitude: number; longitude: number},
+  ): Promise<Route> => {
     try {
       // OSRM espera las coordenadas en formato [longitude,latitude]
       const response = await fetch(
@@ -49,7 +93,7 @@ const DriverHomeScreen = ({user}) => {
         const route = data.routes[0];
 
         // Convertir las coordenadas de GeoJSON [longitude,latitude] a [latitude,longitude]
-        const points = route.geometry.coordinates.map(coord => ({
+        const points = route.geometry.coordinates.map((coord: any) => ({
           latitude: coord[1],
           longitude: coord[0],
         }));
@@ -112,15 +156,10 @@ const DriverHomeScreen = ({user}) => {
       }
 
       try {
-        console.log('Fetching requests with position:', {
-          lat: position.latitude,
-          lng: position.longitude,
-        });
+        console.log('Fetching requests with position:', {});
 
         const requests = await tripRequestService.getDriverPendingRequests(
           user.id,
-          position.latitude,
-          position.longitude,
         );
 
         console.log('Received requests:', requests);
@@ -138,7 +177,10 @@ const DriverHomeScreen = ({user}) => {
     }
   }, [position, isOnDuty]); // Agregar position e isOnDuty como dependencias
 
-  const handleRequestResponse = async (requestId, status) => {
+  const handleRequestResponse = async (
+    requestId: string,
+    status: 'accepted' | 'rejected',
+  ) => {
     try {
       await tripRequestService.updateRequestStatus(requestId, status);
 
@@ -205,6 +247,7 @@ const DriverHomeScreen = ({user}) => {
   };
   const handleArrivalAtPickup = async () => {
     try {
+      if (!activeTrip?.id) return;
       await tripRequestService.updateTripStatus(
         activeTrip.id,
         'pickup_reached',
@@ -212,13 +255,13 @@ const DriverHomeScreen = ({user}) => {
       setTripPhase('toDestination');
 
       const startLocation = {
-        latitude: activeTrip.origin_lat,
-        longitude: activeTrip.origin_lng,
+        latitude: activeTrip?.origin_lat,
+        longitude: activeTrip?.origin_lng,
       };
 
       const endLocation = {
-        latitude: activeTrip.destination_lat,
-        longitude: activeTrip.destination_lng,
+        latitude: activeTrip?.destination_lat,
+        longitude: activeTrip?.destination_lng,
       };
 
       // Calcular ruta al destino usando OSRM
@@ -239,10 +282,11 @@ const DriverHomeScreen = ({user}) => {
   };
   const handleTripCompletion = async () => {
     try {
+      if (!activeTrip?.id) return;
       await tripRequestService.updateTripStatus(activeTrip.id, 'completed');
       setActiveTrip(null);
       setTripPhase(null);
-      setCurrentRoute(null); // Clear the route
+      setCurrentRoute(null);
       Alert.alert('Éxito', 'Viaje completado exitosamente');
     } catch (error) {
       console.error('Error completing trip:', error);
@@ -293,10 +337,10 @@ const DriverHomeScreen = ({user}) => {
     try {
       const initialPosition = await getCurrentPosition();
 
-      setPosition(initialPosition);
+      setPosition(initialPosition as Position);
 
       if (mapRef.current) {
-        mapRef.current.animateToRegion(initialPosition, 1000);
+        mapRef.current.animateToRegion(initialPosition as Region, 1000);
       }
 
       Geolocation.watchPosition(
@@ -338,7 +382,7 @@ const DriverHomeScreen = ({user}) => {
   };
 
   // En DriverHomeScreen.js, modificar updateDriverLocation
-  const updateDriverLocation = async newPosition => {
+  const updateDriverLocation = async (newPosition: Position) => {
     if (!isOnDuty) return; // No actualizar si no está en servicio
 
     try {
@@ -367,7 +411,9 @@ const DriverHomeScreen = ({user}) => {
       setIsOnDuty(newStatus);
 
       if (newStatus && !offlineMode) {
-        await updateDriverLocation(position);
+        if (position) {
+          await updateDriverLocation(position);
+        }
       }
 
       Alert.alert(
@@ -424,6 +470,18 @@ const DriverHomeScreen = ({user}) => {
       ],
     },
   ];
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerLeft: () => (
+        <TouchableOpacity
+          onPress={() => setIsSidebarVisible(true)}
+          style={{marginLeft: 15}}>
+          <Menu color="#0891b2" size={24} />
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation]);
 
   return (
     <View style={styles.container}>
@@ -552,14 +610,14 @@ const DriverHomeScreen = ({user}) => {
         style={styles.map}
         provider={PROVIDER_DEFAULT}
         customMapStyle={mapStyle}
-        region={position}
+        region={position as Region}
         showsUserLocation={true}
         followsUserLocation={true}
         showsMyLocationButton={true}
         maxZoomLevel={19}>
         <UrlTile
-          urlTemplate="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          subdomains={['a', 'b', 'c']}
+          urlTemplate="https://a.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          zIndex={-1}
           maximumZ={19}
         />
         {currentRoute && currentRoute.polyline && (
@@ -591,6 +649,11 @@ const DriverHomeScreen = ({user}) => {
           </>
         )}
       </MapView>
+      <Sidebar
+        isVisible={isSidebarVisible}
+        onClose={() => setIsSidebarVisible(false)}
+        role="chofer"
+      />
     </View>
   );
 };
