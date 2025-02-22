@@ -8,21 +8,28 @@ import {
   Animated,
   ScrollView,
 } from 'react-native';
-import {LogOut, X, User} from 'lucide-react-native';
+import {LogOut, User, Map, Users, FileText} from 'lucide-react-native';
 import {useAuthContext} from '../contexts/AuthContext';
+import {useNavigation, NavigationProp} from '@react-navigation/native';
 
 const {height} = Dimensions.get('window');
 
 interface SidebarProps {
   isVisible: boolean;
   onClose: () => void;
-  role: 'chofer' | 'operador';
+  role: 'chofer' | 'operador' | 'admin';
 }
+
+type RootStackParamList = {
+  OperatorScreen: undefined;
+  DriversListScreen: undefined;
+  DriverMapScreen: undefined;
+  GeneralReportsScreen: undefined;
+};
 
 const Sidebar = ({isVisible, onClose, role}: SidebarProps) => {
   const {user, logout} = useAuthContext();
-
-  console.log('User data in Sidebar:', user); // Para debugging
+  const navigation = useNavigation<NavigationProp<RootStackParamList>>();
 
   const slideAnim = React.useRef(new Animated.Value(-300)).current;
 
@@ -55,15 +62,6 @@ const Sidebar = ({isVisible, onClose, role}: SidebarProps) => {
             transform: [{translateX: slideAnim}],
           },
         ]}>
-        <View style={styles.header}>
-          <Text style={styles.title}>
-            Menú {role === 'chofer' ? 'Chofer' : 'Operador'}
-          </Text>
-          <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <X color="#374151" size={24} />
-          </TouchableOpacity>
-        </View>
-
         <ScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.scrollViewContent}
@@ -85,11 +83,47 @@ const Sidebar = ({isVisible, onClose, role}: SidebarProps) => {
               </Text>
             )}
             <Text style={styles.userRole}>
-              {role === 'chofer' ? 'Chofer' : 'Operador'}
+              {role === 'chofer'
+                ? 'Chofer'
+                : role === 'operador'
+                ? 'Operador'
+                : 'Administrador'}
             </Text>
           </View>
 
           <View style={styles.content}>
+            {role === 'admin' && (
+              <View style={styles.menuSection}>
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => {
+                    navigation.navigate('DriverMapScreen');
+                    onClose();
+                  }}>
+                  <Users color="#0891b2" size={24} />
+                  <Text style={styles.menuItemText}>Ver Choferes</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => {
+                    navigation.navigate('OperatorScreen');
+                    onClose();
+                  }}>
+                  <Map color="#0891b2" size={24} />
+                  <Text style={styles.menuItemText}>Solicitar Viaje</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => {
+                    navigation.navigate('GeneralReportsScreen');
+                    onClose();
+                  }}>
+                  <FileText color="#0891b2" size={24} />
+                  <Text style={styles.menuItemText}>Reportes Generales</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
             <TouchableOpacity
               style={styles.logoutButton}
               onPress={handleLogout}>
@@ -142,82 +176,77 @@ const styles = StyleSheet.create({
   scrollViewContent: {
     flexGrow: 1,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 50,
-    paddingBottom: 20,
-    backgroundColor: '#ffffff',
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  closeButton: {
-    padding: 5,
-  },
   userInfo: {
     alignItems: 'center',
-    padding: 24,
+    padding: 20,
     borderBottomWidth: 1,
     borderBottomColor: '#e5e7eb',
-    backgroundColor: '#f9fafb',
+    marginTop: 40,
   },
   avatarContainer: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: '#e0f2fe',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 3,
+    borderWidth: 2,
+    borderColor: '#0891b2',
   },
   userName: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '600',
-    color: '#111827',
-    marginTop: 8,
+    color: '#1e293b',
+    marginTop: 4,
     textAlign: 'center',
   },
   userRole: {
-    fontSize: 15,
-    color: '#4b5563',
-    marginTop: 4,
-    backgroundColor: '#e0f2fe',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  userPhone: {
-    fontSize: 14,
-    color: '#6b7280',
+    fontSize: 13,
+    color: '#0891b2',
     marginTop: 8,
+    fontWeight: '600',
+    backgroundColor: '#e0f2fe',
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#0891b2',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   content: {
-    paddingHorizontal: 20,
     paddingTop: 20,
-    paddingBottom: 100,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
     flex: 1,
     justifyContent: 'space-between',
+  },
+  menuSection: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+    paddingBottom: 16,
+    marginBottom: 16,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: '#f8fafc',
+    marginBottom: 8,
+  },
+  menuItemText: {
+    marginLeft: 12,
+    fontSize: 16,
+    color: '#334155',
+    fontWeight: '500',
   },
   logoutButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     paddingVertical: 15,
-    marginTop: 20,
+    marginTop: 'auto',
     borderTopWidth: 1,
     borderTopColor: '#e5e7eb',
     backgroundColor: '#fef2f2',

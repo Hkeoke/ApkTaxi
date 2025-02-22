@@ -21,6 +21,7 @@ export interface DriverProfile {
   phone_number: string;
   vehicle: string;
   vehicle_type: VehicleType;
+  pin?: string;
   balance: number;
   is_on_duty: boolean;
   last_duty_change: string | null;

@@ -29,6 +29,8 @@ interface Driver {
   longitude: string | number;
   vehicle: string;
   vehicle_type: '2_ruedas' | '4_ruedas';
+  is_on_duty: boolean;
+  user_id: string;
 }
 
 interface Location {
@@ -49,9 +51,15 @@ interface User {
 
 interface Props {
   user: User;
+  role?: 'admin' | 'operador' | 'chofer';
+  mode?: 'normal' | 'view_drivers';
 }
 
-const OperatorHomeScreen: React.FC<Props> = ({user}) => {
+const OperatorHomeScreen: React.FC<Props> = ({
+  user,
+  role = 'operador',
+  mode = 'normal',
+}) => {
   const navigation = useNavigation();
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null);
@@ -72,6 +80,7 @@ const OperatorHomeScreen: React.FC<Props> = ({user}) => {
   const [searchRadius, setSearchRadius] = useState(3000);
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
   const [showRequestForm, setShowRequestForm] = useState(false);
+  const [viewMode, setViewMode] = useState(mode);
 
   const [region, setRegion] = useState({
     latitude: 23.1136,
@@ -301,22 +310,46 @@ const OperatorHomeScreen: React.FC<Props> = ({user}) => {
   useEffect(() => {
     const fetchDrivers = async () => {
       try {
-        const availableDrivers = await driverService.getAvailableDrivers();
-        setDrivers(availableDrivers);
-        if (availableDrivers.length > 0) {
+        setLoading(true);
+        let availableDrivers;
+
+        if (viewMode === 'view_drivers') {
+          availableDrivers = await driverService.getAvailableDrivers();
+        } else {
+          availableDrivers = await driverService.getAvailableDrivers();
+        }
+
+        // Asegurarnos de que los datos son válidos
+        const validDrivers = availableDrivers.filter(
+          driver =>
+            typeof driver.latitude === 'number' &&
+            typeof driver.longitude === 'number',
+        );
+
+        setDrivers(validDrivers);
+
+        // Solo actualizar la región si hay conductores válidos
+        if (validDrivers.length > 0) {
           const newRegion = {
-            latitude: Number(availableDrivers[0].latitude),
-            longitude: Number(availableDrivers[0].longitude),
-            latitudeDelta: 0.001,
-            longitudeDelta: 0.001,
+            latitude: Number(validDrivers[0].latitude),
+            longitude: Number(validDrivers[0].longitude),
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
           };
           setRegion(newRegion);
-          if (mapRef.current) {
-            mapRef.current.animateToRegion(newRegion, 1000);
-          }
+          mapRef.current?.animateToRegion(newRegion, 1000);
+        } else {
+          // Región por defecto si no hay conductores
+          setRegion({
+            latitude: 23.1136,
+            longitude: -82.3666,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
+          });
         }
       } catch (error) {
         console.error('Error fetching drivers:', error);
+        setDrivers([]);
       } finally {
         setLoading(false);
       }
@@ -325,7 +358,7 @@ const OperatorHomeScreen: React.FC<Props> = ({user}) => {
     fetchDrivers();
     const interval = setInterval(fetchDrivers, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [viewMode]);
 
   const showDriverInfo = (driver: Driver) => {
     // Si el conductor ya está seleccionado, no hagas nada
@@ -402,11 +435,28 @@ const OperatorHomeScreen: React.FC<Props> = ({user}) => {
   }, [navigation]);
 
   const getVehicleIcon = (driver: Driver) => {
-    return driver.vehicle_type === '2_ruedas' ? (
-      <Bike color="#0891b2" size={24} />
-    ) : (
-      <Car color="#0891b2" size={24} />
+    const color = driver.is_on_duty ? '#22c55e' : '#ef4444';
+    const icon =
+      driver.vehicle_type === '2_ruedas' ? (
+        <Bike color={color} size={16} />
+      ) : (
+        <Car color={color} size={16} />
+      );
+
+    return (
+      <View style={styles.markerIconContainer}>
+        {icon}
+        <View style={[styles.markerPin, {backgroundColor: color}]} />
+        <View style={styles.markerPinShadow} />
+      </View>
     );
+  };
+
+  const getMarkerColor = (driver: Driver) => {
+    if (viewMode === 'view_drivers') {
+      return driver.is_on_duty ? '#22c55e' : '#ef4444';
+    }
+    return '#0891b2';
   };
 
   return (
@@ -450,10 +500,21 @@ const OperatorHomeScreen: React.FC<Props> = ({user}) => {
               longitude: Number(driver.longitude),
             }}
             title={`${driver.first_name} ${driver.last_name}`}
-            description={`Vehículo: ${driver.vehicle}`}
-            pinColor="blue"
+            description={`${
+              driver.is_on_duty ? 'En servicio' : 'Fuera de servicio'
+            } - ${driver.vehicle}`}
             onPress={() => showDriverInfo(driver)}>
-            <View style={styles.markerContainer}>{getVehicleIcon(driver)}</View>
+            <View style={styles.markerWrapper}>
+              <View
+                style={[
+                  styles.markerContainer,
+                  {
+                    borderColor: driver.is_on_duty ? '#22c55e' : '#ef4444',
+                  },
+                ]}>
+                {getVehicleIcon(driver)}
+              </View>
+            </View>
           </Marker>
         ))}
       </MapView>
@@ -600,7 +661,7 @@ const OperatorHomeScreen: React.FC<Props> = ({user}) => {
       <Sidebar
         isVisible={isSidebarVisible}
         onClose={() => setIsSidebarVisible(false)}
-        role="operador"
+        role={role}
       />
     </View>
   );
@@ -622,15 +683,48 @@ const styles = StyleSheet.create({
   map: {
     flex: 1,
   },
+  markerWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   markerContainer: {
-    padding: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: 'white',
-    borderRadius: 20,
-    elevation: 5,
     shadowColor: '#000',
-    shadowOffset: {width: 0, height: 2},
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
+    elevation: 5,
+    borderWidth: 1.5,
+  },
+  markerIconContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    height: '100%',
+  },
+  markerPin: {
+    position: 'absolute',
+    bottom: -10,
+    width: 2,
+    height: 10,
+    borderRadius: 1,
+  },
+  markerPinShadow: {
+    position: 'absolute',
+    bottom: -12,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+    transform: [{scaleX: 2}],
   },
   driversList: {
     flex: 1,

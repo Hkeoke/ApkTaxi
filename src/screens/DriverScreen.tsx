@@ -407,7 +407,7 @@ const DriverHomeScreen: React.FC<{user: {id: string}}> = ({user}) => {
   const toggleDutyStatus = async () => {
     try {
       const newStatus = !isOnDuty;
-      await driverService.updateDutyStatus(user.id, newStatus);
+      await driverService.updateDriverStatus(user.id, newStatus);
       setIsOnDuty(newStatus);
 
       if (newStatus && !offlineMode) {

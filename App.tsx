@@ -18,10 +18,23 @@ import {View} from 'react-native';
 import {Text} from 'react-native';
 import {useEffect, useState} from 'react';
 import OperatorTripsScreen from './src/screens/OperatorTripsScreen';
+import DriversListScreen from './src/screens/DriversListScreen';
+import DriverManagementScreen from './src/screens/DriverManagementScreen';
+import OperatorManagementScreen from './src/screens/OperatorManagementScreen';
+import CreateDriverScreen from './src/screens/CreateDriverScreen';
+import DriverTripsAnalytics from './src/screens/DriverTripsAnalytics';
+import DriverMapScreen from './src/screens/DriverMapScreen';
+import EditDriverScreen from './src/screens/EditDriverScreen';
+import DriverReportsScreen from './src/screens/DriverReportsScreen';
+import CreateOperatorScreen from './src/screens/CreateOperatorScreen';
+import OperatorsListScreen from './src/screens/OperatorsListScreen';
+import OperatorReportsScreen from './src/screens/OperatorReportsScreen';
+import GeneralReportsScreen from './src/screens/GeneralReportsScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 function AdminTabs() {
+  const {user} = useAuthContext();
   return (
     <Tab.Navigator
       screenOptions={{
@@ -119,7 +132,7 @@ function NavigationStack() {
   const {user, loading} = useAuthContext();
 
   if (loading) {
-    return null; // O un componente de loading
+    return null;
   }
 
   return (
@@ -128,7 +141,6 @@ function NavigationStack() {
         // Auth Stack
         <>
           <Stack.Screen name="Login" component={LoginScreen} />
-          {/*<Stack.Screen name="Register" component={RegisterScreen} />*/}
         </>
       ) : (
         // App Stacks según el rol
@@ -140,7 +152,119 @@ function NavigationStack() {
             <Stack.Screen name="OperatorTabs" component={OperatorTabs} />
           )}
           {user.role === 'admin' && (
-            <Stack.Screen name="AdminTabs" component={AdminTabs} />
+            <>
+              <Stack.Screen name="AdminTabs" component={AdminTabs} />
+              <Stack.Screen
+                name="OperatorScreen"
+                component={({route}: {route: any}) => (
+                  <OperatorHomeScreen
+                    user={user}
+                    role="admin"
+                    mode={route.params?.mode || 'normal'}
+                  />
+                )}
+                options={{
+                  headerShown: true,
+                  title: 'Solicitud de viajes',
+                }}
+              />
+              <Stack.Screen
+                name="DriversListScreen"
+                component={DriversListScreen}
+                options={{
+                  headerShown: true,
+                  title: 'Lista de Choferes',
+                }}
+              />
+              <Stack.Screen
+                name="DriverManagementScreen"
+                component={DriverManagementScreen}
+                options={{
+                  headerShown: true,
+                  title: 'Gestión de Choferes',
+                }}
+              />
+              <Stack.Screen
+                name="CreateDriverScreen"
+                component={CreateDriverScreen}
+                options={{
+                  headerShown: true,
+                  title: 'Crear Chofer',
+                }}
+              />
+              <Stack.Screen
+                name="OperatorManagementScreen"
+                component={OperatorManagementScreen}
+                options={{
+                  headerShown: true,
+                  title: 'Gestión de Operadores',
+                }}
+              />
+              <Stack.Screen
+                name="DriverTripsAnalytics"
+                component={DriverTripsAnalytics}
+                options={{
+                  headerShown: true,
+                  title: 'Estadísticas de Viajes',
+                }}
+              />
+              <Stack.Screen
+                name="DriverMapScreen"
+                component={DriverMapScreen}
+                options={{
+                  headerShown: true,
+                  title: 'Mapa de Choferes',
+                }}
+              />
+              <Stack.Screen
+                name="EditDriver"
+                component={EditDriverScreen}
+                options={{
+                  headerShown: true,
+                  title: 'Editar Chofer',
+                }}
+              />
+              <Stack.Screen
+                name="DriverReports"
+                component={DriverReportsScreen}
+                options={{
+                  headerShown: true,
+                  title: 'Reportes de Viajes',
+                }}
+              />
+              <Stack.Screen
+                name="CreateOperatorScreen"
+                component={CreateOperatorScreen}
+                options={{
+                  headerShown: true,
+                  title: 'Crear Operador',
+                }}
+              />
+              <Stack.Screen
+                name="OperatorsListScreen"
+                component={OperatorsListScreen}
+                options={{
+                  headerShown: true,
+                  title: 'Lista de Operadores',
+                }}
+              />
+              <Stack.Screen
+                name="OperatorReports"
+                component={OperatorReportsScreen}
+                options={{
+                  headerShown: true,
+                  title: 'Reportes de Operadores',
+                }}
+              />
+              <Stack.Screen
+                name="GeneralReportsScreen"
+                component={GeneralReportsScreen}
+                options={{
+                  headerShown: true,
+                  title: 'Reportes Generales',
+                }}
+              />
+            </>
           )}
         </>
       )}
