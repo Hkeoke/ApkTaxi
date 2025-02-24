@@ -857,7 +857,7 @@ const DriverHomeScreen: React.FC<{
         <>
           <View style={styles.topRoutePanel}>
             <View style={styles.routeHeader}>
-              <Text style={styles.routeTitle}>Dirección del Cliente</Text>
+              <Text style={styles.routeTitle}>Detalles del Viaje</Text>
               <Text style={styles.routeDistance}>
                 {currentRoute?.distance || ''}
               </Text>
@@ -866,15 +866,15 @@ const DriverHomeScreen: React.FC<{
               <View style={styles.routePoint}>
                 <MapPinIcon size={20} color="#3B82F6" />
                 <Text style={styles.routeText} numberOfLines={2}>
-                  {pendingRequests[0].origin}
+                  {pendingRequests[0].observations}
                 </Text>
               </View>
-              <View style={styles.routePoint}>
+              {/*<View style={styles.routePoint}>
                 <FlagIcon size={20} color="#22C55E" />
                 <Text style={styles.routeText} numberOfLines={2}>
                   {pendingRequests[0].destination}
                 </Text>
-              </View>
+              </View>*/}
             </View>
             <View style={styles.routeInfo}>
               <Text style={styles.routeInfoText}>
