@@ -1,7 +1,11 @@
 // NotificationService.js
-import notifee, {AndroidImportance, EventType} from '@notifee/react-native';
+import notifee, {
+  AndroidImportance,
+  EventType,
+  AndroidVisibility,
+} from '@notifee/react-native';
 import {AppState} from 'react-native';
-import {tripRequestService} from './api';
+import {tripRequestService, driverService} from './api';
 
 class NotificationService {
   static pollingInterval = null;
@@ -12,9 +16,11 @@ class NotificationService {
       id: 'trip_requests',
       name: 'Solicitudes de Viaje',
       importance: AndroidImportance.HIGH,
-      sound: 'default',
+      sound: 'notification', // Asegúrate de que este sonido existe
       vibration: true,
       lights: true,
+      vibrationPattern: [300, 500],
+      visibility: AndroidVisibility.PUBLIC,
     });
   }
 
@@ -27,10 +33,82 @@ class NotificationService {
     return true;
   }
 
+  static async setupForegroundHandler() {
+    return notifee.onForegroundEvent(({type, detail}) => {
+      const {notification, pressAction} = detail;
+
+      if (type === EventType.ACTION_PRESS && notification?.data) {
+        const requestId = notification.data.requestId;
+
+        if (pressAction?.id === 'accept') {
+          tripRequestService.updateRequestStatus(requestId, 'accepted');
+          tripRequestService.convertRequestToTrip(requestId);
+        } else if (pressAction?.id === 'reject') {
+          tripRequestService.updateRequestStatus(requestId, 'rejected');
+        }
+
+        // Cancelar la notificación después de la acción
+        notifee.cancelNotification(notification.id);
+      }
+    });
+  }
+
+  static async setupBackgroundHandler() {
+    return notifee.onBackgroundEvent(async ({type, detail}) => {
+      const {notification, pressAction} = detail;
+
+      if (type === EventType.ACTION_PRESS && notification?.data) {
+        const requestId = notification.data.requestId;
+
+        if (pressAction?.id === 'accept') {
+          await tripRequestService.updateRequestStatus(requestId, 'accepted');
+          await tripRequestService.convertRequestToTrip(requestId);
+        } else if (pressAction?.id === 'reject') {
+          await tripRequestService.updateRequestStatus(requestId, 'rejected');
+        }
+
+        // Cancelar la notificación después de la acción
+        await notifee.cancelNotification(notification.id);
+      }
+    });
+  }
+
+  static async setupAppStateHandler(driverId) {
+    // Manejar cambios en el estado de la aplicación
+    this.appStateSubscription = AppState.addEventListener(
+      'change',
+      nextAppState => {
+        if (nextAppState === 'active') {
+          // La app vuelve a primer plano
+          this.startNotificationService(driverId);
+        } else if (nextAppState === 'background') {
+          // La app va a segundo plano
+          // Mantenemos el servicio activo pero ajustamos el intervalo
+          if (this.pollingInterval) {
+            clearInterval(this.pollingInterval);
+            this.pollingInterval = setInterval(() => {
+              this.checkForNewRequests(driverId);
+            }, 30000); // Aumentamos el intervalo en segundo plano
+          }
+        }
+      },
+    );
+  }
+
   static async startNotificationService(driverId) {
     try {
       if (!driverId) {
-        console.error('No se proporcionó ID del chofer');
+        console.error('driverId es requerido para iniciar el servicio');
+        return;
+      }
+
+      console.log('Iniciando servicio de notificaciones para:', driverId);
+
+      const driverProfile = await driverService.getDriverProfile(driverId);
+      if (!driverProfile?.is_on_duty) {
+        console.log(
+          'Conductor no está en servicio, no se inician notificaciones',
+        );
         return;
       }
 
@@ -40,23 +118,23 @@ class NotificationService {
         return;
       }
 
+      // Detener cualquier servicio existente antes de iniciar uno nuevo
+      await this.stopNotificationService();
+
       await this.createNotificationChannel();
+      await this.setupForegroundHandler();
+      await this.setupBackgroundHandler();
+      await this.setupAppStateHandler(driverId);
 
-      // Verificar si ya hay un polling activo
-      if (this.pollingInterval) {
-        clearInterval(this.pollingInterval);
-      }
-
-      // Hacer la primera verificación inmediatamente
+      // Verificar solicitudes inmediatamente
       await this.checkForNewRequests(driverId);
 
-      // Iniciar polling
-      this.startPolling(driverId);
+      // Iniciar el polling
+      this.pollingInterval = setInterval(() => {
+        this.checkForNewRequests(driverId);
+      }, 10000);
 
-      // Configurar AppState
-      this.setupAppStateListener(driverId);
-
-      console.log('Servicio de notificaciones iniciado para chofer:', driverId);
+      console.log('Servicio de notificaciones iniciado exitosamente');
     } catch (error) {
       console.error('Error al iniciar servicio de notificaciones:', error);
     }
@@ -64,164 +142,126 @@ class NotificationService {
 
   static async checkForNewRequests(driverId) {
     try {
+      // Verificar si el driverId es válido
       if (!driverId) {
-        console.error('ID de chofer no válido');
+        console.error('driverId no válido');
         return;
       }
 
-      console.log('Verificando solicitudes cercanas para chofer:', driverId);
+      const driverProfile = await driverService.getDriverProfile(driverId);
+
+      if (!driverProfile) {
+        console.error('No se pudo obtener el perfil del conductor');
+        return;
+      }
+
+      if (!driverProfile.is_on_duty) {
+        console.log('Conductor fuera de servicio, deteniendo notificaciones');
+        await this.stopNotificationService();
+        return;
+      }
+
+      console.log('Verificando solicitudes para:', driverId);
+      console.log('Tipo de vehículo:', driverProfile.vehicle_type);
+
       const requests = await tripRequestService.getDriverPendingRequests(
         driverId,
+        driverProfile.vehicle_type,
       );
 
-      if (!requests || requests.length === 0) {
-        console.log('No hay nuevas solicitudes cercanas');
-        return;
-      }
+      if (requests && requests.length > 0) {
+        console.log(
+          `Encontradas ${requests.length} solicitudes pendientes:`,
+          requests,
+        );
+        for (const request of requests) {
+          // Verificar si ya existe una notificación para esta solicitud
+          const existingNotifications =
+            await notifee.getDisplayedNotifications();
+          const notificationExists = existingNotifications.some(
+            n => n.id === `trip_request_${request.id}`,
+          );
 
-      console.log(`Se encontraron ${requests.length} solicitudes cercanas`);
-
-      for (const request of requests) {
-        if (request.distance <= request.search_radius) {
-          await this.displayNotification(request);
-          console.log('Notificación enviada para solicitud:', request.id);
+          if (!notificationExists) {
+            await this.displayNotification(request);
+          }
         }
       }
     } catch (error) {
-      console.error('Error al verificar nuevas solicitudes:', error);
+      console.error('Error al verificar solicitudes:', error);
     }
   }
 
   static async displayNotification(request) {
     try {
       if (!request || !request.id) {
-        console.error('Datos de solicitud inválidos');
+        console.error('Solicitud inválida:', request);
         return;
       }
 
       const channelId = await this.createNotificationChannel();
-      const notificationId = `trip_request_${request.id}_${Date.now()}`;
 
-      const distanceText =
-        request.distance >= 1000
-          ? `${(request.distance / 1000).toFixed(1)} km`
-          : `${Math.round(request.distance)} m`;
+      // Formatear el precio correctamente
+      const formattedPrice =
+        typeof request.price === 'number'
+          ? request.price.toFixed(2)
+          : request.price;
+
+      const notificationId = `trip_request_${request.id}`;
+
+      console.log('Mostrando notificación:', {
+        id: notificationId,
+        request: request,
+      });
 
       await notifee.displayNotification({
         id: notificationId,
         title: '¡Nueva solicitud de viaje! 🚖',
-        body: `Origen: ${request.origin}\nDestino: ${request.destination}\nPrecio: $${request.price}\nDistancia: ${distanceText}\nOperador: ${request.operator_profiles?.first_name}`,
+        body: `Origen: ${request.origin}\nDestino: ${request.destination}\nPrecio: $${formattedPrice}`,
         android: {
           channelId,
-          importance: AndroidImportance.HIGH,
-          sound: 'default',
           pressAction: {
             id: 'default',
           },
           actions: [
             {
-              title: 'Aceptar',
+              title: '✅ Aceptar',
               pressAction: {
                 id: 'accept',
               },
             },
             {
-              title: 'Rechazar',
+              title: '❌ Rechazar',
               pressAction: {
                 id: 'reject',
               },
             },
           ],
+          smallIcon: 'ic_notification', // Asegúrate de que este icono existe
+          importance: AndroidImportance.HIGH,
+          sound: 'notification',
+          vibrationPattern: [300, 500],
         },
         data: {
           requestId: request.id,
           type: 'trip_request',
         },
       });
-
-      return notificationId;
     } catch (error) {
       console.error('Error al mostrar notificación:', error);
     }
   }
 
-  static setupAppStateListener(driverId) {
-    if (this.appStateSubscription) {
-      this.appStateSubscription.remove();
-    }
-
-    this.appStateSubscription = AppState.addEventListener(
-      'change',
-      nextAppState => {
-        console.log('Estado de la app cambió a:', nextAppState);
-
-        if (nextAppState === 'active') {
-          console.log('App en primer plano - reiniciando polling');
-          this.startPolling(driverId);
-        } else if (nextAppState === 'background') {
-          console.log('App en segundo plano - ajustando intervalo');
-          this.adjustPollingInterval(driverId, 30000);
-        }
-      },
-    );
-  }
-
-  static startPolling(driverId) {
-    this.adjustPollingInterval(driverId, 10000); // 10 segundos en primer plano
-  }
-
-  static adjustPollingInterval(driverId, interval) {
+  static async stopNotificationService() {
     if (this.pollingInterval) {
       clearInterval(this.pollingInterval);
+      this.pollingInterval = null;
     }
-
-    this.pollingInterval = setInterval(() => {
-      this.checkForNewRequests(driverId);
-    }, interval);
-  }
-
-  static async stopNotificationService() {
-    try {
-      if (this.pollingInterval) {
-        clearInterval(this.pollingInterval);
-        this.pollingInterval = null;
-      }
-
-      if (this.appStateSubscription) {
-        this.appStateSubscription.remove();
-        this.appStateSubscription = null;
-      }
-
-      console.log('Servicio de notificaciones detenido');
-    } catch (error) {
-      console.error('Error al detener servicio de notificaciones:', error);
+    if (this.appStateSubscription) {
+      this.appStateSubscription.remove();
+      this.appStateSubscription = null;
     }
-  }
-
-  static async setupBackgroundHandler() {
-    return notifee.onBackgroundEvent(async ({type, detail}) => {
-      const {notification, pressAction} = detail;
-
-      if (type === EventType.ACTION_PRESS && pressAction) {
-        const requestId = notification?.data?.requestId;
-
-        if (!requestId) return;
-
-        try {
-          if (pressAction.id === 'accept') {
-            await tripRequestService.updateRequestStatus(requestId, 'accepted');
-            await tripRequestService.convertRequestToTrip(requestId);
-          } else if (pressAction.id === 'reject') {
-            await tripRequestService.updateRequestStatus(requestId, 'rejected');
-          }
-
-          // Cancelar la notificación después de la acción
-          await notifee.cancelNotification(notification.id);
-        } catch (error) {
-          console.error('Error handling background action:', error);
-        }
-      }
-    });
+    console.log('Servicio de notificaciones detenido');
   }
 }
 

@@ -45,7 +45,7 @@ const DriversListScreen = ({navigation}: {navigation: any}) => {
   const fetchDrivers = async () => {
     try {
       const response = await driverService.getAllDrivers();
-      setDrivers(response);
+      setDrivers(response as Driver[]);
     } catch (error) {
       Alert.alert('Error', 'No se pudieron cargar los choferes');
     } finally {
@@ -93,11 +93,7 @@ const DriversListScreen = ({navigation}: {navigation: any}) => {
     );
   };
 
-  const renderDriver = ({
-    item,
-  }: {
-    item: Driver & {users: {active: boolean}};
-  }) => (
+  const renderDriver = ({item}: {item: Driver}) => (
     <View style={styles.driverCard}>
       <View style={styles.driverHeader}>
         <View style={styles.driverAvatar}>
@@ -111,15 +107,19 @@ const DriversListScreen = ({navigation}: {navigation: any}) => {
             <View
               style={[
                 styles.statusDot,
-                {backgroundColor: item.users.active ? '#22c55e' : '#ef4444'},
+                {
+                  backgroundColor: item.users?.active ? '#22c55e' : '#ef4444',
+                },
               ]}
             />
             <Text
               style={[
                 styles.statusText,
-                {color: item.users.active ? '#22c55e' : '#ef4444'},
+                {
+                  color: item.users?.active ? '#22c55e' : '#ef4444',
+                },
               ]}>
-              {item.users.active ? 'Activo' : 'Inactivo'}
+              {item.users?.active ? 'Activo' : 'Inactivo'}
             </Text>
           </View>
         </View>
@@ -147,11 +147,13 @@ const DriversListScreen = ({navigation}: {navigation: any}) => {
           style={[
             styles.actionButton,
             {
-              backgroundColor: item.users.active ? '#fee2e2' : '#dcfce7',
+              backgroundColor: item.users?.active ? '#fee2e2' : '#dcfce7',
             },
           ]}
-          onPress={() => handleToggleActive(item.id, item.users.active)}>
-          {item.users.active ? (
+          onPress={() =>
+            handleToggleActive(item.id, item.users?.active || false)
+          }>
+          {item.users?.active ? (
             <PowerOff size={20} color="#ef4444" />
           ) : (
             <Power size={20} color="#22c55e" />

@@ -30,6 +30,7 @@ import CreateOperatorScreen from './src/screens/CreateOperatorScreen';
 import OperatorsListScreen from './src/screens/OperatorsListScreen';
 import OperatorReportsScreen from './src/screens/OperatorReportsScreen';
 import GeneralReportsScreen from './src/screens/GeneralReportsScreen';
+import DriverTripsScreen from './src/screens/DriverTripsScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -64,34 +65,24 @@ function DriverTabs() {
         tabBarActiveTintColor: '#0891b2',
         tabBarInactiveTintColor: '#64748b',
       }}>
-      {
-        <Tab.Screen
-          name="DriverHome"
-          options={{
-            title: 'Inicio',
-            tabBarIcon: ({color, size}) => <Truck color={color} size={size} />,
-          }}>
-          {() => <DriverHomeScreen user={user} />}
-        </Tab.Screen>
-      }
-      {/* <Tab.Screen
+      <Tab.Screen
+        name="DriverHome"
+        options={{
+          title: 'Inicio',
+          tabBarIcon: ({color, size}) => <Truck color={color} size={size} />,
+        }}>
+        {() => <DriverHomeScreen user={user} />}
+      </Tab.Screen>
+      <Tab.Screen
         name="DriverTrips"
-        component={DriverTripsScreen}
         options={{
           title: 'Mis Viajes',
           tabBarIcon: ({color, size}) => (
             <ClipboardList color={color} size={size} />
           ),
-        }}
-      />*/}
-      {/*<Tab.Screen
-        name="DriverProfile"
-        component={DriverProfileScreen}
-        options={{
-          title: 'Perfil',
-          tabBarIcon: ({color, size}) => <Users color={color} size={size} />,
-        }}
-      />*/}
+        }}>
+        {() => <DriverTripsScreen user={user} />}
+      </Tab.Screen>
     </Tab.Navigator>
   );
 }
@@ -156,18 +147,14 @@ function NavigationStack() {
               <Stack.Screen name="AdminTabs" component={AdminTabs} />
               <Stack.Screen
                 name="OperatorScreen"
-                component={({route}: {route: any}) => (
-                  <OperatorHomeScreen
-                    user={user}
-                    role="admin"
-                    mode={route.params?.mode || 'normal'}
-                  />
-                )}
                 options={{
                   headerShown: true,
-                  title: 'Solicitud de viajes',
-                }}
-              />
+                  title: 'Solicitar Viaje',
+                }}>
+                {props => (
+                  <OperatorHomeScreen {...props} user={user} role="admin" />
+                )}
+              </Stack.Screen>
               <Stack.Screen
                 name="DriversListScreen"
                 component={DriversListScreen}

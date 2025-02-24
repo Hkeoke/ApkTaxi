@@ -135,6 +135,7 @@ const GeneralReportsScreen = () => {
   const [operatorSearchTerm, setOperatorSearchTerm] = useState('');
   const [showDrivers, setShowDrivers] = useState(false);
   const [showOperators, setShowOperators] = useState(false);
+  const [totalAmount, setTotalAmount] = useState(0);
 
   useEffect(() => {
     loadPersons();
@@ -144,6 +145,12 @@ const GeneralReportsScreen = () => {
   useEffect(() => {
     fetchTrips();
   }, [selectedYear, selectedDriver, selectedOperator, showFilters]);
+
+  useEffect(() => {
+    // Calcular el total cuando cambian los viajes
+    const total = trips.reduce((sum, trip) => sum + trip.price, 0);
+    setTotalAmount(total);
+  }, [trips]);
 
   const loadPersons = async () => {
     try {
@@ -284,10 +291,19 @@ const GeneralReportsScreen = () => {
               table { width: 100%; border-collapse: collapse; }
               th, td { border: 1px solid black; padding: 8px; text-align: left; }
               th { background-color: #f2f2f2; }
+              .total-row { 
+                background-color: #e2e8f0; 
+                font-weight: bold;
+              }
             </style>
           </head>
           <body>
             <h1>Reporte de Viajes</h1>
+            <div style="margin-bottom: 20px; padding: 10px; background-color: #f8fafc; border: 1px solid #cbd5e1;">
+              <h2 style="margin: 0; color: #0f172a;">Total de Viajes: $${totalAmount.toFixed(
+                2,
+              )}</h2>
+            </div>
             <table>
               <tr>
                 <th>Fecha</th>
@@ -335,7 +351,6 @@ const GeneralReportsScreen = () => {
 
       const file = await RNHTMLtoPDF.convert(options);
 
-      // Mostrar diálogo para compartir/guardar
       await Share.open({
         url: `file://${file.filePath}`,
         type: 'application/pdf',
@@ -370,6 +385,16 @@ const GeneralReportsScreen = () => {
           : 'No asignado',
         Precio: trip.price,
       }));
+
+      // Agregar fila con el total
+      excelData.push({
+        Fecha: '',
+        Origen: '',
+        Destino: '',
+        Chofer: '',
+        Operador: 'Total:',
+        Precio: totalAmount,
+      });
 
       // Crear workbook
       const ws = XLSX.utils.json_to_sheet(excelData);
@@ -629,6 +654,11 @@ const GeneralReportsScreen = () => {
           />
         </View>
       )}
+
+      <View style={styles.totalContainer}>
+        <Text style={styles.totalLabel}>Total de Viajes:</Text>
+        <Text style={styles.totalAmount}>${totalAmount.toFixed(2)}</Text>
+      </View>
 
       <FlatList
         data={trips}
@@ -916,6 +946,28 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  totalContainer: {
+    backgroundColor: '#f8fafc',
+    padding: 16,
+    marginHorizontal: 10,
+    marginTop: 10,
+    borderRadius: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+  },
+  totalLabel: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#0f172a',
+  },
+  totalAmount: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#0891b2',
   },
 });
 

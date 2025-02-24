@@ -8,3 +8,13 @@
 #   http://developer.android.com/guide/developing/tools/proguard.html
 
 # Add any project specific keep options here:
+
+# Reglas básicas de ProGuard para React Native
+-keep class com.facebook.hermes.unicode.** { *; }
+-keep class com.facebook.jni.** { *; }
+
+# Mantén las clases de tu aplicación
+-keep class com.apktaxi.** { *; }
+
+# Reglas para imágenes y assets
+-keep public class com.horcrux.svg.** {*;}

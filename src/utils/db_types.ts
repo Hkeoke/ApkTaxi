@@ -1,5 +1,10 @@
 export type Role = 'admin' | 'operador' | 'chofer';
-export type TripStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
+export type TripStatus =
+  | 'pending'
+  | 'in_progress'
+  | 'pickup_reached'
+  | 'completed'
+  | 'cancelled';
 export type VehicleType = '2_ruedas' | '4_ruedas';
 
 export interface User {
@@ -39,11 +44,14 @@ export interface OperatorProfile {
 export interface Trip {
   id: string;
   driver_id: string;
-  operator_id: string;
+  created_by: string;
   origin: string;
   destination: string;
+  origin_lat: number;
+  origin_lng: number;
+  destination_lat: number;
+  destination_lng: number;
   status: TripStatus;
   price: number;
-  created_at: string;
-  completed_at: string | null;
+  completed_at?: string;
 }

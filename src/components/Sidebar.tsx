@@ -8,7 +8,7 @@ import {
   Animated,
   ScrollView,
 } from 'react-native';
-import {LogOut, User, Map, Users, FileText} from 'lucide-react-native';
+import {LogOut, User, Map, Users, FileText, Clock} from 'lucide-react-native';
 import {useAuthContext} from '../contexts/AuthContext';
 import {useNavigation, NavigationProp} from '@react-navigation/native';
 
@@ -25,6 +25,7 @@ type RootStackParamList = {
   DriversListScreen: undefined;
   DriverMapScreen: undefined;
   GeneralReportsScreen: undefined;
+  DriverTrips: undefined;
 };
 
 const Sidebar = ({isVisible, onClose, role}: SidebarProps) => {
@@ -89,6 +90,18 @@ const Sidebar = ({isVisible, onClose, role}: SidebarProps) => {
                 ? 'Operador'
                 : 'Administrador'}
             </Text>
+            {role === 'chofer' && user?.driver_profiles && (
+              <View style={styles.balanceContainer}>
+                <Text style={styles.balanceLabel}>Balance Actual:</Text>
+                <Text
+                  style={[
+                    styles.balanceAmount,
+                    user.driver_profiles.balance < 0 && styles.negativeBalance,
+                  ]}>
+                  ${user.driver_profiles.balance?.toFixed(2) || '0.00'}
+                </Text>
+              </View>
+            )}
           </View>
 
           <View style={styles.content}>
@@ -120,6 +133,20 @@ const Sidebar = ({isVisible, onClose, role}: SidebarProps) => {
                   }}>
                   <FileText color="#0891b2" size={24} />
                   <Text style={styles.menuItemText}>Reportes Generales</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {role === 'chofer' && (
+              <View style={styles.menuSection}>
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => {
+                    navigation.navigate('DriverTrips');
+                    onClose();
+                  }}>
+                  <Clock color="#0891b2" size={24} />
+                  <Text style={styles.menuItemText}>Mis Viajes</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -257,6 +284,31 @@ const styles = StyleSheet.create({
     color: '#ef4444',
     fontSize: 16,
     fontWeight: '500',
+  },
+  balanceContainer: {
+    marginTop: 16,
+    padding: 12,
+    backgroundColor: '#f0fdf4',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#22c55e',
+    width: '100%',
+  },
+  balanceLabel: {
+    fontSize: 14,
+    color: '#15803d',
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  balanceAmount: {
+    fontSize: 24,
+    color: '#16a34a',
+    fontWeight: '700',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  negativeBalance: {
+    color: '#dc2626',
   },
 });
 

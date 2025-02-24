@@ -47,15 +47,16 @@ interface OSMResult {
 
 interface User {
   id: string;
+  role?: 'admin' | 'operador' | 'chofer';
 }
 
-interface Props {
+interface OperatorScreenProps {
   user: User;
-  role?: 'admin' | 'operador' | 'chofer';
+  role?: 'admin' | 'operador';
   mode?: 'normal' | 'view_drivers';
 }
 
-const OperatorHomeScreen: React.FC<Props> = ({
+const OperatorHomeScreen: React.FC<OperatorScreenProps> = ({
   user,
   role = 'operador',
   mode = 'normal',
@@ -94,26 +95,68 @@ const OperatorHomeScreen: React.FC<Props> = ({
     destination: '',
     price: '',
     observations: '',
+    vehicle_type: '4_ruedas' as '2_ruedas' | '4_ruedas',
   });
 
-  const handleMapPress = (event: any) => {
-    const {coordinate} = event.nativeEvent;
-    setSelectedLocation({
-      name: `${coordinate.latitude.toFixed(6)}, ${coordinate.longitude.toFixed(
-        6,
-      )}`,
-      latitude: coordinate.latitude,
-      longitude: coordinate.longitude,
-    });
+  // Agregar función para obtener dirección desde coordenadas
+  const getAddressFromCoords = async (latitude: number, longitude: number) => {
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&addressdetails=1`,
+        {
+          headers: {
+            'User-Agent': 'TaxiApp/1.0',
+          },
+        },
+      );
+      const data = await response.json();
+      return data.display_name || `${latitude}, ${longitude}`;
+    } catch (error) {
+      console.error('Error getting address:', error);
+      return `${latitude}, ${longitude}`;
+    }
+  };
 
-    mapRef.current?.animateToRegion(
-      {
-        ...coordinate,
-        latitudeDelta: 0.001,
-        longitudeDelta: 0.001,
-      },
-      500,
-    );
+  // Modificar handleMapPress para incluir la búsqueda de dirección
+  const handleMapPress = async (event: any) => {
+    const {coordinate} = event.nativeEvent;
+
+    // Mostrar un indicador de carga si lo deseas
+    setLoading(true);
+
+    try {
+      const address = await getAddressFromCoords(
+        coordinate.latitude,
+        coordinate.longitude,
+      );
+
+      setSelectedLocation({
+        name: address,
+        latitude: coordinate.latitude,
+        longitude: coordinate.longitude,
+      });
+
+      mapRef.current?.animateToRegion(
+        {
+          ...coordinate,
+          latitudeDelta: 0.001,
+          longitudeDelta: 0.001,
+        },
+        500,
+      );
+    } catch (error) {
+      console.error('Error en handleMapPress:', error);
+      // En caso de error, usar las coordenadas como respaldo
+      setSelectedLocation({
+        name: `${coordinate.latitude.toFixed(
+          6,
+        )}, ${coordinate.longitude.toFixed(6)}`,
+        latitude: coordinate.latitude,
+        longitude: coordinate.longitude,
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const mapStyle = [
@@ -287,7 +330,9 @@ const OperatorHomeScreen: React.FC<Props> = ({
         destination_lng: destinationCoords.longitude,
         search_radius: searchRadius,
         observations: requestForm.observations,
+        vehicle_type: requestForm.vehicle_type,
       };
+      console.log('esto es lo que se manda en la solicitud', requestData);
 
       await tripRequestService.createBroadcastRequest(requestData);
 
@@ -297,6 +342,7 @@ const OperatorHomeScreen: React.FC<Props> = ({
         destination: '',
         price: '',
         observations: '',
+        vehicle_type: '4_ruedas',
       });
       setOriginCoords(null);
       setDestinationCoords(null);
@@ -394,14 +440,13 @@ const OperatorHomeScreen: React.FC<Props> = ({
     });
   };
 
+  // Modificar confirmLocationSelection para usar la dirección obtenida
   const confirmLocationSelection = async () => {
     if (!selectedLocation) return;
 
     try {
       const locationData = {
-        name: `${selectedLocation.latitude.toFixed(
-          6,
-        )}, ${selectedLocation.longitude.toFixed(6)}`,
+        name: selectedLocation.name,
         latitude: selectedLocation.latitude,
         longitude: selectedLocation.longitude,
       };
@@ -565,6 +610,57 @@ const OperatorHomeScreen: React.FC<Props> = ({
               </Text>
             </TouchableOpacity>
 
+            <View style={styles.vehicleTypeContainer}>
+              <Text style={styles.label}>Tipo de vehículo:</Text>
+              <View style={styles.radioGroup}>
+                <TouchableOpacity
+                  style={[
+                    styles.radioButton,
+                    requestForm.vehicle_type === '4_ruedas' &&
+                      styles.radioButtonSelected,
+                  ]}
+                  onPress={() =>
+                    setRequestForm(prev => ({
+                      ...prev,
+                      vehicle_type: '4_ruedas',
+                    }))
+                  }>
+                  <Car
+                    size={20}
+                    color={
+                      requestForm.vehicle_type === '4_ruedas'
+                        ? '#0891b2'
+                        : '#666'
+                    }
+                  />
+                  <Text style={styles.radioText}>4 ruedas</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.radioButton,
+                    requestForm.vehicle_type === '2_ruedas' &&
+                      styles.radioButtonSelected,
+                  ]}
+                  onPress={() =>
+                    setRequestForm(prev => ({
+                      ...prev,
+                      vehicle_type: '2_ruedas',
+                    }))
+                  }>
+                  <Bike
+                    size={20}
+                    color={
+                      requestForm.vehicle_type === '2_ruedas'
+                        ? '#0891b2'
+                        : '#666'
+                    }
+                  />
+                  <Text style={styles.radioText}>2 ruedas</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
             <TextInput
               style={styles.input}
               placeholder="Precio"
@@ -633,12 +729,14 @@ const OperatorHomeScreen: React.FC<Props> = ({
               <Marker
                 coordinate={selectedLocation}
                 draggable
-                onDragEnd={e => {
+                onDragEnd={async e => {
                   const coordinate = e.nativeEvent.coordinate;
+                  const address = await getAddressFromCoords(
+                    coordinate.latitude,
+                    coordinate.longitude,
+                  );
                   setSelectedLocation({
-                    name: `${coordinate.latitude.toFixed(
-                      6,
-                    )}, ${coordinate.longitude.toFixed(6)}`,
+                    name: address,
                     latitude: coordinate.latitude,
                     longitude: coordinate.longitude,
                   });
@@ -646,6 +744,12 @@ const OperatorHomeScreen: React.FC<Props> = ({
               />
             )}
           </MapView>
+
+          {loading && (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#0891b2" />
+            </View>
+          )}
 
           <TouchableOpacity
             style={[
@@ -661,7 +765,7 @@ const OperatorHomeScreen: React.FC<Props> = ({
       <Sidebar
         isVisible={isSidebarVisible}
         onClose={() => setIsSidebarVisible(false)}
-        role={role}
+        role={role || user.role}
       />
     </View>
   );
@@ -1001,6 +1105,48 @@ const styles = StyleSheet.create({
   markerText: {
     fontSize: 24,
     color: '#0891b2',
+  },
+  vehicleTypeContainer: {
+    width: '100%',
+    marginBottom: 10,
+  },
+  label: {
+    fontSize: 16,
+    color: '#333',
+    marginBottom: 8,
+  },
+  radioGroup: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 5,
+  },
+  radioButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    width: '45%',
+    justifyContent: 'center',
+  },
+  radioButtonSelected: {
+    borderColor: '#0891b2',
+    backgroundColor: '#f0f9ff',
+  },
+  radioText: {
+    marginLeft: 8,
+    fontSize: 16,
+    color: '#333',
+  },
+  loadingContainer: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: [{translateX: -20}, {translateY: -20}],
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    borderRadius: 10,
+    padding: 10,
   },
 });
 export default OperatorHomeScreen;

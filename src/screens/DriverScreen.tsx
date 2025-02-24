@@ -63,7 +63,9 @@ interface Position {
   longitudeDelta: number;
 }
 
-const DriverHomeScreen: React.FC<{user: {id: string}}> = ({user}) => {
+const DriverHomeScreen: React.FC<{
+  user: {id: string; vehicle_type: string};
+}> = ({user}) => {
   const [position, setPosition] = useState<Position | null>(null);
   const [pendingRequests, setPendingRequests] = useState<TripRequest[]>([]);
   const mapRef = useRef<MapView | null>(null);
@@ -160,6 +162,7 @@ const DriverHomeScreen: React.FC<{user: {id: string}}> = ({user}) => {
 
         const requests = await tripRequestService.getDriverPendingRequests(
           user.id,
+          user.vehicle_type,
         );
 
         console.log('Received requests:', requests);

@@ -11,12 +11,14 @@ import {
 // En tripService
 export const tripRequestService = {
   async createBroadcastRequest(requestData: any) {
+    const {operator_id, ...rest} = requestData;
     const {data, error} = await supabase
       .from('trip_requests')
       .insert([
         {
-          ...requestData,
-          status: 'broadcasting', // Aseguramos que el estado sea 'broadcasting'
+          ...rest,
+          created_by: operator_id,
+          status: 'broadcasting',
         },
       ])
       .select();
@@ -26,51 +28,86 @@ export const tripRequestService = {
   },
 
   // Modificar el método para obtener solicitudes pendientes
-  async getDriverPendingRequests(driverId: string) {
-    // Primero obtenemos la ubicación actual del chofer
-    const {data: driverData, error: driverError} = await supabase
-      .from('driver_profiles')
-      .select('latitude, longitude')
-      .eq('id', driverId)
-      .single();
+  async getDriverPendingRequests(driverId: string, vehicleType: string) {
+    try {
+      // Primero obtenemos la ubicación actual del chofer
+      const {data: driverData, error: driverError} = await supabase
+        .from('driver_profiles')
+        .select('latitude, longitude, vehicle_type')
+        .eq('id', driverId)
+        .single();
 
-    if (driverError) throw driverError;
-    if (!driverData?.latitude || !driverData?.longitude) {
-      console.log('Chofer sin ubicación actualizada');
+      if (driverError) throw driverError;
+      if (!driverData?.latitude || !driverData?.longitude) {
+        console.log('Chofer sin ubicación actualizada');
+        return [];
+      }
+
+      // Primero obtenemos las solicitudes con la información básica
+      const {data: requests, error: requestsError} = await supabase
+        .from('trip_requests')
+        .select('*, created_by')
+        .eq('status', 'broadcasting')
+        .eq('vehicle_type', vehicleType);
+
+      if (requestsError) throw requestsError;
+
+      // Obtenemos los usuarios creadores
+      const creatorIds = requests?.map(req => req.created_by) || [];
+      const {data: creators, error: creatorsError} = await supabase
+        .from('users')
+        .select('id, role')
+        .in('id', creatorIds);
+
+      if (creatorsError) throw creatorsError;
+
+      // Obtenemos los perfiles de operadores
+      const operatorIds =
+        creators
+          ?.filter(creator => creator.role === 'operador')
+          .map(creator => creator.id) || [];
+
+      const {data: operatorProfiles, error: operatorError} = await supabase
+        .from('operator_profiles')
+        .select('id, first_name, last_name')
+        .in('id', operatorIds);
+
+      if (operatorError) throw operatorError;
+
+      // Procesamos los datos para tener un formato uniforme
+      const processedRequests = requests?.map(request => {
+        const creator = creators?.find(c => c.id === request.created_by);
+        const isOperator = creator?.role === 'operador';
+        const operatorProfile = operatorProfiles?.find(
+          op => op.id === request.created_by,
+        );
+
+        return {
+          ...request,
+          creator: {
+            first_name: isOperator ? operatorProfile?.first_name : 'Admin',
+            last_name: isOperator ? operatorProfile?.last_name : '',
+            role: creator?.role,
+          },
+        };
+      });
+
+      // Filtramos las solicitudes por distancia
+      const nearbyRequests = processedRequests?.filter(request => {
+        const distance = this.calculateDistance(
+          driverData.latitude,
+          driverData.longitude,
+          request.origin_lat,
+          request.origin_lng,
+        );
+        return distance <= request.search_radius;
+      });
+
+      return nearbyRequests || [];
+    } catch (error) {
+      console.error('Error en getDriverPendingRequests:', error);
       return [];
     }
-
-    // Usamos la función get_nearby_requests para obtener solicitudes cercanas
-    const {data, error} = await supabase
-      .from('trip_requests')
-      .select(
-        `
-        *,
-        operator:operator_id (
-          first_name,
-          last_name
-        )
-      `,
-      )
-      .eq('status', 'broadcasting');
-
-    if (error) {
-      console.error('Error al obtener solicitudes:', error);
-      throw error;
-    }
-
-    // Filtramos las solicitudes por distancia
-    const nearbyRequests = data?.filter(request => {
-      const distance = this.calculateDistance(
-        driverData.latitude,
-        driverData.longitude,
-        request.origin_lat,
-        request.origin_lng,
-      );
-      return distance <= request.search_radius;
-    });
-
-    return nearbyRequests || [];
   },
 
   // Función auxiliar para calcular distancia
@@ -109,10 +146,19 @@ export const tripRequestService = {
     return data;
   },
 
-  async updateRequestStatus(requestId: string, status: string) {
+  async updateRequestStatus(
+    requestId: string,
+    status: string,
+    driverId?: string,
+  ) {
+    const updates: any = {status};
+    if (driverId && status === 'accepted') {
+      updates.driver_id = driverId;
+    }
+
     const {data, error} = await supabase
       .from('trip_requests')
-      .update({status})
+      .update(updates)
       .eq('id', requestId)
       .select();
 
@@ -121,49 +167,48 @@ export const tripRequestService = {
   },
 
   async convertRequestToTrip(requestId: string) {
-    // First get the full request details
-    const {data: request, error: requestError} = await supabase
-      .from('trip_requests')
-      .select('*')
-      .eq('id', requestId)
-      .single();
+    try {
+      // Primero obtenemos los datos de la solicitud para asegurarnos de tener el driver_id
+      const {data: request, error: requestError} = await supabase
+        .from('trip_requests')
+        .select('*')
+        .eq('id', requestId)
+        .single();
 
-    if (requestError) throw requestError;
+      if (requestError || !request) {
+        throw new Error('No se pudo obtener la solicitud');
+      }
 
-    // Include all location data in tripData
-    const tripData = {
-      driver_id: request.driver_id,
-      operator_id: request.operator_id,
-      origin: request.origin,
-      destination: request.destination,
-      origin_lat: request.origin_lat,
-      origin_lng: request.origin_lng,
-      destination_lat: request.destination_lat,
-      destination_lng: request.destination_lng,
-      price: request.price,
-      status: 'in_progress',
-    };
+      // Llamar a la función de la base de datos con los datos completos
+      const {data, error} = await supabase.rpc('convert_request_to_trip', {
+        request_id: requestId,
+      });
 
-    const {data: trip, error: tripError} = await supabase
-      .from('trips')
-      .insert(tripData)
-      .select('*')
-      .single();
-
-    if (tripError) throw tripError;
-    return trip;
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error converting request to trip:', error);
+      throw error;
+    }
   },
 
-  async updateTripStatus(tripId: string, status: string) {
+  async updateTripStatus(tripId: string, status: TripStatus) {
+    const updates: Partial<Trip> = {
+      status,
+      ...(status === 'completed'
+        ? {completed_at: new Date().toISOString()}
+        : {}),
+    };
+
     const {data, error} = await supabase
       .from('trips')
-      .update({status})
+      .update(updates)
       .eq('id', tripId)
-      .select('*') // Add this to return the updated trip
+      .select('*')
       .single();
 
     if (error) throw error;
-    return data;
+    return data as Trip;
   },
 };
 
@@ -247,7 +292,7 @@ export const driverService = {
   async getDriverProfile(driverId: string): Promise<DriverProfile> {
     const {data, error} = await supabase
       .from('driver_profiles')
-      .select('*')
+      .select('*, is_on_duty')
       .eq('id', driverId)
       .single();
 
@@ -257,20 +302,25 @@ export const driverService = {
     return data;
   },
 
-  async updateBalance(driverId: string, amount: number) {
-    const {data, error} = await supabase
-      .from('driver_profiles')
-      .update({
-        balance: supabase.rpc('increment_balance', {
-          row_id: driverId,
-          amount: amount,
-        }),
-      })
-      .eq('id', driverId)
-      .single();
+  async updateBalance(
+    driverId: string,
+    amount: number,
+    isDeduction: boolean = false,
+  ) {
+    try {
+      // Si es una deducción, convertimos el monto a negativo
+      const finalAmount = isDeduction ? -amount : amount;
 
-    if (error) throw error;
-    return data;
+      const {error} = await supabase.rpc('increment_driver_balance', {
+        driver_id: driverId,
+        amount: finalAmount,
+      });
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error updating driver balance:', error);
+      throw error;
+    }
   },
 
   async getActiveTrips(driverId: string) {
@@ -322,15 +372,16 @@ export const driverService = {
       .from('driver_profiles')
       .select(
         `
-        id,
-        first_name,
-        last_name
+        *,
+        users (
+          active
+        )
       `,
       )
-      .order('first_name', {ascending: true});
+      .order('created_at', {ascending: false});
 
     if (error) throw error;
-    return data || [];
+    return data;
   },
 
   async createDriver(driverData: {
@@ -389,7 +440,6 @@ export const driverService = {
           phone_number: driverData.phone_number,
           vehicle: driverData.vehicle,
           vehicle_type: driverData.vehicle_type,
-          is_active: true,
           license_number: `LIC-${Date.now()}-${Math.random()
             .toString(36)
             .substring(2, 7)}`,
@@ -494,6 +544,46 @@ export const driverService = {
 
     if (error) throw error;
     return data;
+  },
+
+  async toggleDutyStatus(driverId: string) {
+    try {
+      // Primero obtenemos el estado actual
+      const {data: currentState, error: fetchError} = await supabase
+        .from('driver_profiles')
+        .select('is_on_duty')
+        .eq('id', driverId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      const newDutyStatus = !currentState?.is_on_duty;
+
+      // Ahora actualizamos al estado opuesto
+      const {data, error} = await supabase
+        .from('driver_profiles')
+        .update({
+          is_on_duty: newDutyStatus,
+          last_duty_change: new Date().toISOString(),
+        })
+        .eq('id', driverId)
+        .select('is_on_duty')
+        .single();
+
+      if (error) throw error;
+
+      console.log('Nuevo estado de servicio:', data?.is_on_duty);
+      return {
+        success: true,
+        isOnDuty: data?.is_on_duty || false,
+      };
+    } catch (error) {
+      console.error('Error toggling duty status:', error);
+      return {
+        success: false,
+        isOnDuty: false,
+      };
+    }
   },
 };
 
@@ -682,27 +772,72 @@ export const tripService = {
       .from('trips')
       .update(updates)
       .eq('id', tripId)
+      .select('*')
       .single();
 
     if (error) throw error;
-    return data;
+    return data as Trip;
   },
 
   async getDriverTrips(driverId: string) {
-    const {data, error} = await supabase
-      .from('trips')
-      .select('*')
-      .eq('driver_id', driverId);
+    try {
+      const {data, error} = await supabase
+        .from('trips')
+        .select(
+          `
+          id,
+          status,
+          price,
+          origin,
+          destination,
+          created_at,
+          driver_profiles!inner (
+            id,
+            first_name,
+            last_name
+          )
+        `,
+        )
+        .eq('driver_id', driverId)
+        .in('status', ['completed', 'cancelled'])
+        .order('created_at', {ascending: false});
 
-    if (error) throw error;
-    return data;
+      if (error) {
+        console.error('Error in getDriverTrips:', error);
+        throw error;
+      }
+
+      // Calculamos la comisión (10%) para cada viaje
+      const tripsWithCommission =
+        data?.map(trip => ({
+          ...trip,
+          commission: trip.price * 0.1,
+        })) || [];
+
+      return tripsWithCommission;
+    } catch (error) {
+      console.error('Error fetching driver trips:', error);
+      return [];
+    }
   },
 
   async getOperatorTrips(operatorId: string) {
     const {data, error} = await supabase
       .from('trips')
-      .select('*')
-      .eq('operator_id', operatorId);
+      .select(
+        `
+        id,
+        status,
+        price,
+        origin,
+        destination,
+        created_at,
+        completed_at,
+        created_by
+      `,
+      )
+      .eq('created_by', operatorId)
+      .order('created_at', {ascending: false});
 
     if (error) throw error;
     return data;
@@ -907,9 +1042,13 @@ export const analyticsService = {
             first_name,
             last_name
           ),
-          operator_profiles (
-            first_name,
-            last_name
+          users!created_by (
+            id,
+            role,
+            operator_profiles (
+              first_name,
+              last_name
+            )
           )
         `,
         )
@@ -927,13 +1066,21 @@ export const analyticsService = {
         query = query.eq('driver_id', driverId);
       }
       if (operatorId) {
-        query = query.eq('operator_id', operatorId);
+        query = query.eq('created_by', operatorId);
       }
 
       const {data, error} = await query;
 
       if (error) throw error;
-      return data || [];
+
+      // Transformar los datos para mantener la estructura esperada
+      const transformedData =
+        data?.map(trip => ({
+          ...trip,
+          operator_profiles: trip.users?.operator_profiles || null,
+        })) || [];
+
+      return transformedData;
     } catch (error) {
       console.error('Error en getCompletedTrips:', error);
       throw error;
@@ -955,9 +1102,13 @@ export const analyticsService = {
           first_name,
           last_name
         ),
-        operator_profiles (
-          first_name,
-          last_name
+        users!created_by (
+          id,
+          role,
+          operator_profiles (
+            first_name,
+            last_name
+          )
         )
       `,
       )
@@ -967,12 +1118,20 @@ export const analyticsService = {
       .order('created_at', {ascending: false});
 
     if (operatorId) {
-      query = query.eq('operator_id', operatorId);
+      query = query.eq('created_by', operatorId);
     }
 
     const {data, error} = await query;
 
     if (error) throw error;
-    return data;
+
+    // Transformar los datos para mantener la estructura esperada
+    const transformedData =
+      data?.map(trip => ({
+        ...trip,
+        operator_profiles: trip.users?.operator_profiles || null,
+      })) || [];
+
+    return transformedData;
   },
 };
