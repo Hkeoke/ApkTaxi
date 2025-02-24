@@ -12,6 +12,7 @@ import {
   Linking,
   Animated,
   Pressable,
+  Image,
 } from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 
@@ -309,10 +310,33 @@ const DriverHomeScreen: React.FC<{
             },
           ];
 
-          mapRef.current?.fitToCoordinates(coordinates, {
-            edgePadding: {top: 50, right: 50, bottom: 50, left: 50},
-            animated: true,
+          // Configurar la vista del mapa en modo navegación
+          mapRef.current?.animateToRegion({
+            latitude: position.latitude,
+            longitude: position.longitude,
+            latitudeDelta: 0.005, // Zoom más cercano para navegación
+            longitudeDelta: 0.005,
           });
+
+          // Rotar el mapa en la dirección del siguiente punto de la ruta
+          if (route.polyline.length > 1) {
+            const nextPoint = route.polyline[1];
+            const bearing = calculateBearing(
+              position.latitude,
+              position.longitude,
+              nextPoint.latitude,
+              nextPoint.longitude,
+            );
+            mapRef.current?.animateCamera({
+              center: {
+                latitude: position.latitude,
+                longitude: position.longitude,
+              },
+              pitch: 45, // Inclinar la vista para mejor visualización
+              heading: bearing, // Rotar hacia la dirección de la ruta
+              zoom: 18, // Zoom cercano para navegación
+            });
+          }
         }
 
         Alert.alert('Éxito', 'Viaje aceptado');
@@ -327,6 +351,32 @@ const DriverHomeScreen: React.FC<{
       );
     }
   };
+
+  // Agregar función para calcular el bearing (dirección) entre dos puntos
+  const calculateBearing = (
+    startLat: number,
+    startLng: number,
+    destLat: number,
+    destLng: number,
+  ) => {
+    const toRad = (deg: number) => (deg * Math.PI) / 180;
+
+    const phi1 = toRad(startLat);
+    const phi2 = toRad(destLat);
+    const deltaLambda = toRad(destLng - startLng);
+
+    const y = Math.sin(deltaLambda) * Math.cos(phi2);
+    const x =
+      Math.cos(phi1) * Math.sin(phi2) -
+      Math.sin(phi1) * Math.cos(phi2) * Math.cos(deltaLambda);
+
+    let bearing = Math.atan2(y, x);
+    bearing = (bearing * 180) / Math.PI;
+    bearing = (bearing + 360) % 360;
+
+    return bearing;
+  };
+
   const handleArrivalAtPickup = async () => {
     try {
       if (!activeTrip?.id) return;
@@ -418,7 +468,6 @@ const DriverHomeScreen: React.FC<{
   const startLocationTracking = async () => {
     try {
       const initialPosition = await getCurrentPosition();
-
       setPosition(initialPosition as Position);
 
       if (mapRef.current) {
@@ -429,32 +478,38 @@ const DriverHomeScreen: React.FC<{
         pos => {
           const newPosition = {
             latitude: pos.coords.latitude,
-
             longitude: pos.coords.longitude,
-
             latitudeDelta: 0.001,
-
             longitudeDelta: 0.001,
           };
 
           setPosition(prev => {
-            if (mapRef.current && prev) {
+            if (mapRef.current && prev && activeTrip) {
+              // Si hay un viaje activo, mantener la vista en modo navegación
+              const bearing = calculateBearing(
+                prev.latitude,
+                prev.longitude,
+                newPosition.latitude,
+                newPosition.longitude,
+              );
+
+              mapRef.current.animateCamera({
+                center: newPosition,
+                pitch: 45,
+                heading: bearing,
+                zoom: 18,
+              });
+            } else if (mapRef.current && prev) {
               mapRef.current.animateToRegion(newPosition, 1000);
             }
-
             return newPosition;
           });
         },
-
         error => console.error(error),
-
         {
           enableHighAccuracy: true,
-
           distanceFilter: 5,
-
           interval: 5000,
-
           fastestInterval: 2000,
         },
       );
@@ -590,7 +645,7 @@ const DriverHomeScreen: React.FC<{
         provider={PROVIDER_DEFAULT}
         customMapStyle={mapStyle}
         region={position as Region}
-        showsUserLocation={true}
+        showsUserLocation={false}
         followsUserLocation={true}
         showsMyLocationButton={true}
         maxZoomLevel={19}>
@@ -619,8 +674,23 @@ const DriverHomeScreen: React.FC<{
                     longitude: pendingRequests[0].origin_lng,
                   }}
                   title="Origen">
-                  <View style={styles.markerContainer}>
-                    <MapPinIcon size={24} color="#3B82F6" />
+                  <View style={styles.markerWrapper}>
+                    <View
+                      style={[
+                        styles.markerContainer,
+                        {borderColor: '#3B82F6'},
+                      ]}>
+                      <View style={styles.markerIconContainer}>
+                        <MapPinIcon size={16} color="#3B82F6" />
+                        <View
+                          style={[
+                            styles.markerPin,
+                            {backgroundColor: '#3B82F6'},
+                          ]}
+                        />
+                        <View style={styles.markerPinShadow} />
+                      </View>
+                    </View>
                   </View>
                 </Marker>
                 <Marker
@@ -629,8 +699,23 @@ const DriverHomeScreen: React.FC<{
                     longitude: pendingRequests[0].destination_lng,
                   }}
                   title="Destino">
-                  <View style={styles.markerContainer}>
-                    <FlagIcon size={24} color="#22C55E" />
+                  <View style={styles.markerWrapper}>
+                    <View
+                      style={[
+                        styles.markerContainer,
+                        {borderColor: '#22C55E'},
+                      ]}>
+                      <View style={styles.markerIconContainer}>
+                        <FlagIcon size={16} color="#22C55E" />
+                        <View
+                          style={[
+                            styles.markerPin,
+                            {backgroundColor: '#22C55E'},
+                          ]}
+                        />
+                        <View style={styles.markerPinShadow} />
+                      </View>
+                    </View>
                   </View>
                 </Marker>
               </>
@@ -643,8 +728,23 @@ const DriverHomeScreen: React.FC<{
                     longitude: activeTrip.origin_lng,
                   }}
                   title="Punto de recogida">
-                  <View style={styles.markerContainer}>
-                    <MapPinIcon size={24} color="#3B82F6" />
+                  <View style={styles.markerWrapper}>
+                    <View
+                      style={[
+                        styles.markerContainer,
+                        {borderColor: '#3B82F6'},
+                      ]}>
+                      <View style={styles.markerIconContainer}>
+                        <MapPinIcon size={16} color="#3B82F6" />
+                        <View
+                          style={[
+                            styles.markerPin,
+                            {backgroundColor: '#3B82F6'},
+                          ]}
+                        />
+                        <View style={styles.markerPinShadow} />
+                      </View>
+                    </View>
                   </View>
                 </Marker>
                 {tripPhase === 'toDestination' && (
@@ -654,14 +754,54 @@ const DriverHomeScreen: React.FC<{
                       longitude: activeTrip.destination_lng,
                     }}
                     title="Destino">
-                    <View style={styles.markerContainer}>
-                      <FlagIcon size={24} color="#22C55E" />
+                    <View style={styles.markerWrapper}>
+                      <View
+                        style={[
+                          styles.markerContainer,
+                          {borderColor: '#22C55E'},
+                        ]}>
+                        <View style={styles.markerIconContainer}>
+                          <FlagIcon size={16} color="#22C55E" />
+                          <View
+                            style={[
+                              styles.markerPin,
+                              {backgroundColor: '#22C55E'},
+                            ]}
+                          />
+                          <View style={styles.markerPinShadow} />
+                        </View>
+                      </View>
                     </View>
                   </Marker>
                 )}
               </>
             )}
           </>
+        )}
+        {position && (
+          <Marker
+            coordinate={{
+              latitude: position.latitude,
+              longitude: position.longitude,
+            }}
+            anchor={{x: 0.5, y: 0.5}}
+            rotation={
+              currentRoute?.polyline.length
+                ? (calculateBearing(
+                    position.latitude,
+                    position.longitude,
+                    currentRoute.polyline[1].latitude,
+                    currentRoute.polyline[1].longitude,
+                  ) +
+                    180) %
+                  360
+                : 180
+            }>
+            <Image
+              source={require('../../assets/navegation-arrow.png')}
+              style={styles.navigationArrow}
+            />
+          </Marker>
         )}
       </MapView>
 
@@ -677,11 +817,6 @@ const DriverHomeScreen: React.FC<{
                 {tripPhase === 'toPickup' ? 'Recogida' : 'Destino'}
               </Text>
             </View>
-            <Text style={styles.addressText}>
-              {tripPhase === 'toPickup'
-                ? activeTrip.origin
-                : activeTrip.destination}
-            </Text>
           </View>
 
           <View style={styles.actionButtonsContainer}>
@@ -993,13 +1128,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'transparent',
   },
+  markerWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   markerContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: 'white',
-    padding: 8,
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: '#fff',
-    elevation: 5,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -1007,9 +1146,38 @@ const styles = StyleSheet.create({
     },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
+    elevation: 5,
+    borderWidth: 1.5,
+  },
+  markerIconContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    height: '100%',
+  },
+  markerPin: {
+    position: 'absolute',
+    bottom: -10,
+    width: 2,
+    height: 10,
+    borderRadius: 1,
+  },
+  markerPinShadow: {
+    position: 'absolute',
+    bottom: -12,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+    transform: [{scaleX: 2}],
   },
   arrivalButton: {
     backgroundColor: '#059669',
+  },
+  navigationArrow: {
+    width: 40,
+    height: 40,
+    resizeMode: 'contain',
   },
 });
 
