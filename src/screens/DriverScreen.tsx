@@ -9,6 +9,9 @@ import {
   TouchableOpacity,
   Alert,
   FlatList,
+  Linking,
+  Animated,
+  Pressable,
 } from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 
@@ -27,6 +30,10 @@ import {
   FlagIcon,
   UserIcon,
   Menu,
+  PhoneIcon,
+  MessageSquareIcon,
+  CheckIcon,
+  XIcon,
 } from 'lucide-react-native';
 import Sidebar from '../components/Sidebar';
 
@@ -35,6 +42,15 @@ interface TripRequest {
   origin: string;
   destination: string;
   price: number;
+  origin_lat: number;
+  origin_lng: number;
+  destination_lat: number;
+  destination_lng: number;
+  search_radius: number;
+  vehicle_type: string;
+  status: string;
+  created_by: string;
+  observations?: string;
 }
 
 interface Trip {
@@ -45,6 +61,12 @@ interface Trip {
   origin_lng: number;
   destination_lat: number;
   destination_lng: number;
+  price: number;
+  status: string;
+  driver_id?: string;
+  created_by: string;
+  search_radius: number;
+  passenger_phone?: string;
 }
 
 interface Route {
@@ -64,7 +86,12 @@ interface Position {
 }
 
 const DriverHomeScreen: React.FC<{
-  user: {id: string; vehicle_type: string};
+  user: {
+    id: string;
+    driver_profiles: {
+      vehicle_type: string;
+    };
+  };
 }> = ({user}) => {
   const [position, setPosition] = useState<Position | null>(null);
   const [pendingRequests, setPendingRequests] = useState<TripRequest[]>([]);
@@ -78,15 +105,19 @@ const DriverHomeScreen: React.FC<{
   const [currentRoute, setCurrentRoute] = useState<Route | null>(null);
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
   const navigation = useNavigation();
+  const [scaleAnim] = useState(() => new Animated.Value(1));
 
   const calculateRoute = async (
     start: {latitude: number; longitude: number},
     end: {latitude: number; longitude: number},
   ): Promise<Route> => {
     try {
-      // OSRM espera las coordenadas en formato [longitude,latitude]
+      // Agregamos parámetros para mayor precisión:
+      // steps=true: incluye información detallada de cada paso
+      // geometries=geojson: formato más preciso para coordenadas
+      // overview=full: obtiene todos los puntos de la ruta sin simplificar
       const response = await fetch(
-        `https://router.project-osrm.org/route/v1/driving/${start.longitude},${start.latitude};${end.longitude},${end.latitude}?overview=full&geometries=geojson`,
+        `https://router.project-osrm.org/route/v1/driving/${start.longitude},${start.latitude};${end.longitude},${end.latitude}?steps=true&geometries=geojson&overview=full`,
       );
 
       const data = await response.json();
@@ -94,16 +125,24 @@ const DriverHomeScreen: React.FC<{
       if (data.code === 'Ok' && data.routes.length > 0) {
         const route = data.routes[0];
 
-        // Convertir las coordenadas de GeoJSON [longitude,latitude] a [latitude,longitude]
-        const points = route.geometry.coordinates.map((coord: any) => ({
-          latitude: coord[1],
-          longitude: coord[0],
-        }));
+        // Extraer todos los puntos de los pasos para mayor precisión
+        let allPoints: Array<{latitude: number; longitude: number}> = [];
+
+        // Obtener puntos detallados de cada paso
+        route.legs[0].steps.forEach((step: any) => {
+          const points = step.geometry.coordinates.map(
+            (coord: [number, number]) => ({
+              latitude: coord[1],
+              longitude: coord[0],
+            }),
+          );
+          allPoints = [...allPoints, ...points];
+        });
 
         return {
-          distance: (route.distance / 1000).toFixed(1) + ' km', // Convertir metros a kilómetros
-          duration: Math.round(route.duration / 60) + ' min', // Convertir segundos a minutos
-          polyline: points,
+          distance: (route.distance / 1000).toFixed(1) + ' km',
+          duration: Math.round(route.duration / 60) + ' min',
+          polyline: allPoints,
         };
       }
       throw new Error('No se pudo calcular la ruta');
@@ -153,32 +192,75 @@ const DriverHomeScreen: React.FC<{
   useEffect(() => {
     const fetchPendingRequests = async () => {
       if (!position) {
-        console.log('No position available');
+        console.log('No hay posición disponible');
+        return;
+      }
+
+      if (!isOnDuty) {
+        console.log('Conductor no está en servicio');
         return;
       }
 
       try {
-        console.log('Fetching requests with position:', {});
+        console.log('Estado del conductor:', {
+          id: user.id,
+          vehicleType: user.driver_profiles.vehicle_type,
+          position,
+          isOnDuty,
+        });
 
         const requests = await tripRequestService.getDriverPendingRequests(
           user.id,
-          user.vehicle_type,
+          user.driver_profiles.vehicle_type,
         );
 
-        console.log('Received requests:', requests);
+        console.log('Solicitudes pendientes recibidas:', requests);
+
+        if (requests.length > 0) {
+          // Calcular la ruta entre origen y destino de la solicitud
+          const route = await calculateRoute(
+            {
+              latitude: requests[0].origin_lat,
+              longitude: requests[0].origin_lng,
+            },
+            {
+              latitude: requests[0].destination_lat,
+              longitude: requests[0].destination_lng,
+            },
+          );
+          setCurrentRoute(route);
+
+          // Ajustar el mapa para mostrar la ruta completa
+          const coordinates = [
+            {
+              latitude: requests[0].origin_lat,
+              longitude: requests[0].origin_lng,
+            },
+            ...route.polyline,
+            {
+              latitude: requests[0].destination_lat,
+              longitude: requests[0].destination_lng,
+            },
+          ];
+
+          mapRef.current?.fitToCoordinates(coordinates, {
+            edgePadding: {top: 50, right: 50, bottom: 50, left: 50},
+            animated: true,
+          });
+        }
+
         setPendingRequests(requests);
       } catch (error) {
-        console.error('Error fetching requests:', error);
+        console.error('Error al obtener solicitudes:', error);
       }
     };
 
-    if (isOnDuty) {
-      // Solo buscar solicitudes si está en servicio
+    if (isOnDuty && position) {
       fetchPendingRequests();
       const interval = setInterval(fetchPendingRequests, 10000);
       return () => clearInterval(interval);
     }
-  }, [position, isOnDuty]); // Agregar position e isOnDuty como dependencias
+  }, [position, isOnDuty, user.id, user.driver_profiles.vehicle_type]);
 
   const handleRequestResponse = async (
     requestId: string,
@@ -188,15 +270,11 @@ const DriverHomeScreen: React.FC<{
       await tripRequestService.updateRequestStatus(requestId, status);
 
       if (status === 'accepted') {
-        const tripDetails = await tripRequestService.convertRequestToTrip(
+        const tripDetails = (await tripRequestService.convertRequestToTrip(
           requestId,
-        );
+        )) as Trip;
 
-        if (
-          !tripDetails ||
-          !tripDetails.origin_lat ||
-          !tripDetails.origin_lng
-        ) {
+        if (!tripDetails) {
           throw new Error('Invalid trip details received');
         }
 
@@ -204,30 +282,31 @@ const DriverHomeScreen: React.FC<{
         setTripPhase('toPickup');
 
         if (position) {
-          const pickupLocation = {
-            latitude: tripDetails.origin_lat,
-            longitude: tripDetails.origin_lng,
-          };
-
-          // Calcular ruta al punto de recogida usando OSRM
+          // Calcular ruta desde la posición actual del conductor hasta el punto de recogida
           const route = await calculateRoute(
             {
               latitude: position.latitude,
               longitude: position.longitude,
             },
-            pickupLocation,
+            {
+              latitude: tripDetails.origin_lat,
+              longitude: tripDetails.origin_lng,
+            },
           );
 
           setCurrentRoute(route);
 
-          // Agregar marcadores de inicio y fin a las coordenadas para el ajuste
+          // Ajustar el mapa para mostrar la ruta al punto de recogida
           const coordinates = [
             {
               latitude: position.latitude,
               longitude: position.longitude,
             },
             ...route.polyline,
-            pickupLocation,
+            {
+              latitude: tripDetails.origin_lat,
+              longitude: tripDetails.origin_lng,
+            },
           ];
 
           mapRef.current?.fitToCoordinates(coordinates, {
@@ -486,128 +565,25 @@ const DriverHomeScreen: React.FC<{
     });
   }, [navigation]);
 
+  const handlePhoneCall = () => {
+    const phoneNumber = activeTrip?.passenger_phone || '';
+    Linking.openURL(`tel:${phoneNumber}`);
+  };
+
+  const handleSendSMS = () => {
+    const phoneNumber = activeTrip?.passenger_phone || '';
+    Linking.openURL(`sms:${phoneNumber}`);
+  };
+
+  const animatePress = (pressed: boolean) => {
+    Animated.spring(scaleAnim, {
+      toValue: pressed ? 0.95 : 1,
+      useNativeDriver: true,
+    }).start();
+  };
+
   return (
     <View style={styles.container}>
-      {activeTrip ? (
-        <View style={styles.navigationPanel}>
-          <Text style={styles.navigationTitle}>
-            {tripPhase === 'toPickup'
-              ? 'Navegando al punto de recogida'
-              : 'Navegando al destino'}
-          </Text>
-
-          <View style={styles.tripDetails}>
-            <View style={styles.addressContainer}>
-              {tripPhase === 'toPickup' ? (
-                <>
-                  <MapPinIcon size={24} color="#3B82F6" />
-                  <Text style={styles.addressText}>
-                    Recoger en: {activeTrip.origin}
-                  </Text>
-                </>
-              ) : (
-                <>
-                  <FlagIcon size={24} color="#22C55E" />
-                  <Text style={styles.addressText}>
-                    Destino: {activeTrip.destination}
-                  </Text>
-                </>
-              )}
-            </View>
-
-            {currentRoute && currentRoute.polyline && (
-              <>
-                <Polyline
-                  coordinates={currentRoute.polyline}
-                  strokeWidth={4}
-                  strokeColor="#2196F3"
-                  geodesic={true}
-                />
-                {activeTrip && (
-                  <>
-                    <Marker
-                      coordinate={{
-                        latitude: activeTrip.origin_lat,
-                        longitude: activeTrip.origin_lng,
-                      }}
-                      title="Punto de recogida"
-                    />
-                    <Marker
-                      coordinate={{
-                        latitude: activeTrip.destination_lat,
-                        longitude: activeTrip.destination_lng,
-                      }}
-                      title="Destino"
-                    />
-                  </>
-                )}
-              </>
-            )}
-
-            <TouchableOpacity
-              style={styles.arrivalButton}
-              onPress={
-                tripPhase === 'toPickup'
-                  ? handleArrivalAtPickup
-                  : handleTripCompletion
-              }>
-              <Text style={styles.buttonText}>
-                {tripPhase === 'toPickup'
-                  ? 'He llegado al punto de recogida'
-                  : 'Finalizar viaje'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      ) : (
-        // Existing pending requests panel code...
-        pendingRequests.length > 0 && (
-          <View style={styles.requestsPanel}>
-            <Text style={styles.requestsTitle}>Solicitudes Pendientes</Text>
-            <FlatList
-              data={pendingRequests}
-              renderItem={({item}) => (
-                <View style={styles.requestItem}>
-                  <View>
-                    <Text>Origen: {item.origin}</Text>
-                    <Text>Destino: {item.destination}</Text>
-                    <Text>Precio: ${item.price}</Text>
-                  </View>
-                  <View style={styles.requestActions}>
-                    <TouchableOpacity
-                      style={[styles.actionButton, styles.acceptButton]}
-                      onPress={() =>
-                        handleRequestResponse(item.id, 'accepted')
-                      }>
-                      <Text style={styles.buttonText}>Aceptar</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.actionButton, styles.rejectButton]}
-                      onPress={() =>
-                        handleRequestResponse(item.id, 'rejected')
-                      }>
-                      <Text style={styles.buttonText}>Rechazar</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              )}
-              keyExtractor={item => item.id}
-            />
-          </View>
-        )
-      )}
-      <View style={styles.statusBar}>
-        <View style={styles.statusItem}>
-          <Text style={styles.statusText}>En servicio</Text>
-          <Switch
-            value={isOnDuty}
-            onValueChange={toggleDutyStatus}
-            trackColor={{false: '#767577', true: '#81b0ff'}}
-            thumbColor={isOnDuty ? '#f5dd4b' : '#f4f3f4'}
-          />
-        </View>
-      </View>
-
       <MapView
         ref={mapRef}
         style={styles.map}
@@ -627,10 +603,38 @@ const DriverHomeScreen: React.FC<{
           <>
             <Polyline
               coordinates={currentRoute.polyline}
-              strokeWidth={4}
+              strokeWidth={5}
               strokeColor="#2196F3"
               geodesic={true}
+              lineCap="round"
+              lineJoin="round"
+              miterLimit={10}
+              zIndex={2}
             />
+            {!activeTrip && pendingRequests.length > 0 && (
+              <>
+                <Marker
+                  coordinate={{
+                    latitude: pendingRequests[0].origin_lat,
+                    longitude: pendingRequests[0].origin_lng,
+                  }}
+                  title="Origen">
+                  <View style={styles.markerContainer}>
+                    <MapPinIcon size={24} color="#3B82F6" />
+                  </View>
+                </Marker>
+                <Marker
+                  coordinate={{
+                    latitude: pendingRequests[0].destination_lat,
+                    longitude: pendingRequests[0].destination_lng,
+                  }}
+                  title="Destino">
+                  <View style={styles.markerContainer}>
+                    <FlagIcon size={24} color="#22C55E" />
+                  </View>
+                </Marker>
+              </>
+            )}
             {activeTrip && (
               <>
                 <Marker
@@ -638,20 +642,157 @@ const DriverHomeScreen: React.FC<{
                     latitude: activeTrip.origin_lat,
                     longitude: activeTrip.origin_lng,
                   }}
-                  title="Punto de recogida"
-                />
-                <Marker
-                  coordinate={{
-                    latitude: activeTrip.destination_lat,
-                    longitude: activeTrip.destination_lng,
-                  }}
-                  title="Destino"
-                />
+                  title="Punto de recogida">
+                  <View style={styles.markerContainer}>
+                    <MapPinIcon size={24} color="#3B82F6" />
+                  </View>
+                </Marker>
+                {tripPhase === 'toDestination' && (
+                  <Marker
+                    coordinate={{
+                      latitude: activeTrip.destination_lat,
+                      longitude: activeTrip.destination_lng,
+                    }}
+                    title="Destino">
+                    <View style={styles.markerContainer}>
+                      <FlagIcon size={24} color="#22C55E" />
+                    </View>
+                  </Marker>
+                )}
               </>
             )}
           </>
         )}
       </MapView>
+
+      {activeTrip && (
+        <View style={styles.bottomTripPanel}>
+          <View style={styles.tripInfoContainer}>
+            <View style={styles.tripPhaseIndicator}>
+              <MapPinIcon
+                size={20}
+                color={tripPhase === 'toPickup' ? '#3B82F6' : '#22C55E'}
+              />
+              <Text style={styles.tripPhaseText}>
+                {tripPhase === 'toPickup' ? 'Recogida' : 'Destino'}
+              </Text>
+            </View>
+            <Text style={styles.addressText}>
+              {tripPhase === 'toPickup'
+                ? activeTrip.origin
+                : activeTrip.destination}
+            </Text>
+          </View>
+
+          <View style={styles.actionButtonsContainer}>
+            <TouchableOpacity
+              style={[styles.circleButton, styles.arrivalButton]}
+              onPress={
+                tripPhase === 'toPickup'
+                  ? handleArrivalAtPickup
+                  : handleTripCompletion
+              }>
+              <MapPinIcon size={24} color="white" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.circleButton, styles.callButton]}
+              onPress={handlePhoneCall}>
+              <PhoneIcon size={24} color="white" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.circleButton, styles.messageButton]}
+              onPress={handleSendSMS}>
+              <MessageSquareIcon size={24} color="white" />
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {!activeTrip && pendingRequests.length > 0 && (
+        <>
+          <View style={styles.topRoutePanel}>
+            <View style={styles.routeHeader}>
+              <Text style={styles.routeTitle}>Dirección del Cliente</Text>
+              <Text style={styles.routeDistance}>
+                {currentRoute?.distance || ''}
+              </Text>
+            </View>
+            <View style={styles.routeDetails}>
+              <View style={styles.routePoint}>
+                <MapPinIcon size={20} color="#3B82F6" />
+                <Text style={styles.routeText} numberOfLines={2}>
+                  {pendingRequests[0].origin}
+                </Text>
+              </View>
+              <View style={styles.routePoint}>
+                <FlagIcon size={20} color="#22C55E" />
+                <Text style={styles.routeText} numberOfLines={2}>
+                  {pendingRequests[0].destination}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.routeInfo}>
+              <Text style={styles.routeInfoText}>
+                {currentRoute?.duration || ''} • {currentRoute?.distance || ''}{' '}
+                • Efectivo
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.floatingButtonsContainer}>
+            <Pressable
+              onPressIn={() => animatePress(true)}
+              onPressOut={() => animatePress(false)}
+              onPress={() =>
+                handleRequestResponse(pendingRequests[0].id, 'rejected')
+              }>
+              <Animated.View
+                style={[
+                  styles.floatingButton,
+                  styles.rejectButton,
+                  {transform: [{scale: scaleAnim}]},
+                ]}>
+                <View style={styles.buttonIconContainer}>
+                  <XIcon size={24} color="white" />
+                </View>
+              </Animated.View>
+            </Pressable>
+
+            <Pressable
+              onPressIn={() => animatePress(true)}
+              onPressOut={() => animatePress(false)}
+              onPress={() =>
+                handleRequestResponse(pendingRequests[0].id, 'accepted')
+              }>
+              <Animated.View
+                style={[
+                  styles.floatingButton,
+                  styles.acceptButton,
+                  {transform: [{scale: scaleAnim}]},
+                ]}>
+                <View style={styles.buttonIconContainer}>
+                  <CheckIcon size={24} color="white" />
+                </View>
+              </Animated.View>
+            </Pressable>
+          </View>
+        </>
+      )}
+
+      <View style={styles.statusBar}>
+        <View style={styles.statusItem}>
+          <Text style={styles.statusText}>En servicio</Text>
+          <Switch
+            value={isOnDuty}
+            onValueChange={toggleDutyStatus}
+            trackColor={{false: '#767577', true: '#81b0ff'}}
+            thumbColor={isOnDuty ? '#f5dd4b' : '#f4f3f4'}
+          />
+        </View>
+      </View>
+
       <Sidebar
         isVisible={isSidebarVisible}
         onClose={() => setIsSidebarVisible(false)}
@@ -681,6 +822,7 @@ const styles = StyleSheet.create({
     },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
+    zIndex: 900,
   },
   statusItem: {
     flexDirection: 'row',
@@ -690,71 +832,14 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 16,
   },
-  // Nuevos estilos para el panel de solicitudes
-  requestsPanel: {
+  bottomTripPanel: {
     position: 'absolute',
-    top: 80,
-    left: 10,
-    right: 10,
+    bottom: 80,
+    left: 16,
+    right: 16,
     backgroundColor: 'white',
-    borderRadius: 10,
-    padding: 15,
-    zIndex: 1000,
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    maxHeight: '50%',
-  },
-  requestsTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    color: '#333',
-  },
-  requestItem: {
-    backgroundColor: '#f8f9fa',
-    borderRadius: 8,
+    borderRadius: 16,
     padding: 12,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-  },
-  requestActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginTop: 10,
-    gap: 10,
-  },
-  actionButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderRadius: 6,
-    elevation: 2,
-  },
-  acceptButton: {
-    backgroundColor: '#4CAF50',
-  },
-  rejectButton: {
-    backgroundColor: '#f44336',
-  },
-  buttonText: {
-    color: 'white',
-    fontWeight: '500',
-  },
-  navigationPanel: {
-    position: 'absolute',
-    top: 80,
-    left: 10,
-    right: 10,
-    backgroundColor: 'white',
-    borderRadius: 10,
-    padding: 15,
-    zIndex: 1000,
     elevation: 5,
     shadowColor: '#000',
     shadowOffset: {
@@ -763,42 +848,168 @@ const styles = StyleSheet.create({
     },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  navigationTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 10,
+  tripInfoContainer: {
+    flex: 1,
+    gap: 4,
   },
-  tripDetails: {
-    gap: 12,
-  },
-  addressContainer: {
+  tripPhaseIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingVertical: 8,
+  },
+  tripPhaseText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1F2937',
   },
   addressText: {
-    fontSize: 16,
-    color: '#333',
-    flex: 1,
+    fontSize: 14,
+    color: '#4B5563',
+    paddingLeft: 28,
   },
-  arrivalButton: {
-    backgroundColor: '#4CAF50',
-    padding: 12,
-    borderRadius: 8,
+  topRoutePanel: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'white',
+    padding: 16,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 2},
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  routeHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 12,
+  },
+  routeTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+  },
+  routeDistance: {
+    fontSize: 14,
+    color: '#666',
+  },
+  routeDetails: {
+    gap: 8,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  routePoint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  routeText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#333',
   },
   routeInfo: {
-    backgroundColor: '#f0f0f0',
-    padding: 8,
-    borderRadius: 4,
-    marginVertical: 8,
+    marginTop: 8,
+    alignItems: 'center',
   },
   routeInfoText: {
     fontSize: 14,
     color: '#666',
+  },
+  floatingButtonsContainer: {
+    position: 'absolute',
+    bottom: 80,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 20,
+    paddingHorizontal: 20,
+    backgroundColor: 'transparent',
+  },
+  floatingButton: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  buttonIconContainer: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 32,
+    backgroundColor: 'transparent',
+  },
+  acceptButton: {
+    backgroundColor: '#10B981',
+  },
+  rejectButton: {
+    backgroundColor: '#EF4444',
+  },
+  actionButtonsContainer: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  callButton: {
+    backgroundColor: '#2563EB',
+  },
+  messageButton: {
+    backgroundColor: '#7C3AED',
+  },
+  tripMetrics: {
+    paddingLeft: 28,
+    marginTop: 4,
+  },
+  metricText: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  communicationButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  actionButtonText: {
+    color: 'white',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  circleButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  markerContainer: {
+    backgroundColor: 'white',
+    padding: 8,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: '#fff',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  arrivalButton: {
+    backgroundColor: '#059669',
   },
 });
 

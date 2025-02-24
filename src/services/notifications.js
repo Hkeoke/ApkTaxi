@@ -1,5 +1,5 @@
 // NotificationService.js
-import notifee, {
+/*import notifee, {
   AndroidImportance,
   EventType,
   AndroidVisibility,
@@ -265,4 +265,4 @@ class NotificationService {
   }
 }
 
-export default NotificationService;
+export default NotificationService;*/

@@ -2,7 +2,7 @@
 import React, {createContext, useContext, useEffect, useState} from 'react';
 import {Alert} from 'react-native';
 import {useAuth} from '../hooks/auth';
-import NotificationService from '../services/notifications';
+//import NotificationService from '../services/notifications';
 import {authService} from '../services/api';
 
 interface AuthContextType {
@@ -36,13 +36,13 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({
         'Iniciando servicio de notificaciones para chofer:',
         user.driver_profiles.id,
       );
-      NotificationService.startNotificationService(user.driver_profiles.id);
+      // NotificationService.startNotificationService(user.driver_profiles.id);
     }
 
     return () => {
       if (user?.role === 'chofer') {
         console.log('Deteniendo servicio de notificaciones');
-        NotificationService.stopNotificationService();
+        // NotificationService.stopNotificationService();
       }
     };
   }, [user]);
@@ -74,7 +74,7 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({
     try {
       // Detener el servicio de notificaciones antes de cerrar sesión
       if (user?.role === 'chofer') {
-        await NotificationService.stopNotificationService();
+        // await NotificationService.stopNotificationService();
       }
       await authLogout();
     } catch (error) {

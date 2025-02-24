@@ -30,6 +30,11 @@ export const tripRequestService = {
   // Modificar el método para obtener solicitudes pendientes
   async getDriverPendingRequests(driverId: string, vehicleType: string) {
     try {
+      console.log('Iniciando getDriverPendingRequests:', {
+        driverId,
+        vehicleType,
+      });
+
       // Primero obtenemos la ubicación actual del chofer
       const {data: driverData, error: driverError} = await supabase
         .from('driver_profiles')
@@ -37,80 +42,63 @@ export const tripRequestService = {
         .eq('id', driverId)
         .single();
 
-      if (driverError) throw driverError;
-      if (!driverData?.latitude || !driverData?.longitude) {
-        console.log('Chofer sin ubicación actualizada');
-        return [];
+      if (driverError) {
+        console.error('Error obteniendo datos del conductor:', driverError);
+        throw driverError;
       }
 
-      // Primero obtenemos las solicitudes con la información básica
+      // Modificar la consulta de solicitudes para incluir más información
       const {data: requests, error: requestsError} = await supabase
         .from('trip_requests')
-        .select('*, created_by')
+        .select(
+          `
+          *,
+          created_by,
+          created_at
+        `,
+        )
         .eq('status', 'broadcasting')
-        .eq('vehicle_type', vehicleType);
+        .eq('vehicle_type', vehicleType)
+        .order('created_at', {ascending: false});
 
-      if (requestsError) throw requestsError;
+      if (requestsError) {
+        console.error('Error obteniendo solicitudes:', requestsError);
+        throw requestsError;
+      }
 
-      // Obtenemos los usuarios creadores
-      const creatorIds = requests?.map(req => req.created_by) || [];
-      const {data: creators, error: creatorsError} = await supabase
-        .from('users')
-        .select('id, role')
-        .in('id', creatorIds);
+      console.log('Solicitudes sin filtrar:', requests);
 
-      if (creatorsError) throw creatorsError;
-
-      // Obtenemos los perfiles de operadores
-      const operatorIds =
-        creators
-          ?.filter(creator => creator.role === 'operador')
-          .map(creator => creator.id) || [];
-
-      const {data: operatorProfiles, error: operatorError} = await supabase
-        .from('operator_profiles')
-        .select('id, first_name, last_name')
-        .in('id', operatorIds);
-
-      if (operatorError) throw operatorError;
-
-      // Procesamos los datos para tener un formato uniforme
-      const processedRequests = requests?.map(request => {
-        const creator = creators?.find(c => c.id === request.created_by);
-        const isOperator = creator?.role === 'operador';
-        const operatorProfile = operatorProfiles?.find(
-          op => op.id === request.created_by,
-        );
-
-        return {
-          ...request,
-          creator: {
-            first_name: isOperator ? operatorProfile?.first_name : 'Admin',
-            last_name: isOperator ? operatorProfile?.last_name : '',
-            role: creator?.role,
-          },
-        };
-      });
-
-      // Filtramos las solicitudes por distancia
-      const nearbyRequests = processedRequests?.filter(request => {
+      // Filtrar solicitudes por radio de búsqueda
+      const nearbyRequests = requests?.filter(request => {
         const distance = this.calculateDistance(
-          driverData.latitude,
-          driverData.longitude,
-          request.origin_lat,
-          request.origin_lng,
+          Number(driverData.latitude),
+          Number(driverData.longitude),
+          Number(request.origin_lat),
+          Number(request.origin_lng),
         );
+
+        console.log('Distancia a solicitud:', {
+          requestId: request.id,
+          distance,
+          searchRadius: request.search_radius,
+          isNearby: distance <= request.search_radius,
+        });
+
         return distance <= request.search_radius;
       });
 
+      console.log(
+        'Solicitudes filtradas por distancia:',
+        nearbyRequests?.length || 0,
+      );
+
       return nearbyRequests || [];
     } catch (error) {
-      console.error('Error en getDriverPendingRequests:', error);
+      console.error('Error completo en getDriverPendingRequests:', error);
       return [];
     }
   },
 
-  // Función auxiliar para calcular distancia
   calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
     const R = 6371000; // Radio de la Tierra en metros
     const phi1 = (lat1 * Math.PI) / 180;
@@ -185,7 +173,12 @@ export const tripRequestService = {
       });
 
       if (error) throw error;
-      return data;
+
+      // Asegurarnos que el phone_number se incluye en los datos devueltos
+      return {
+        ...data,
+        phone_number: request.phone_number,
+      };
     } catch (error) {
       console.error('Error converting request to trip:', error);
       throw error;

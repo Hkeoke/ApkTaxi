@@ -331,8 +331,10 @@ const OperatorHomeScreen: React.FC<OperatorScreenProps> = ({
         search_radius: searchRadius,
         observations: requestForm.observations,
         vehicle_type: requestForm.vehicle_type,
+        status: 'broadcasting', // Asegurarnos que el estado inicial es correcto
       };
-      console.log('esto es lo que se manda en la solicitud', requestData);
+
+      console.log('Enviando solicitud:', requestData);
 
       await tripRequestService.createBroadcastRequest(requestData);
 
