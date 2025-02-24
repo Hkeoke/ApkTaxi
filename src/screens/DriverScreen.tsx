@@ -67,7 +67,7 @@ interface Trip {
   driver_id?: string;
   created_by: string;
   search_radius: number;
-  passenger_phone?: string;
+  passenger_phone: string;
 }
 
 interface Route {
@@ -622,11 +622,19 @@ const DriverHomeScreen: React.FC<{
 
   const handlePhoneCall = () => {
     const phoneNumber = activeTrip?.passenger_phone || '';
+    if (!phoneNumber) {
+      Alert.alert('Error', 'No hay número de teléfono disponible');
+      return;
+    }
     Linking.openURL(`tel:${phoneNumber}`);
   };
 
   const handleSendSMS = () => {
     const phoneNumber = activeTrip?.passenger_phone || '';
+    if (!phoneNumber) {
+      Alert.alert('Error', 'No hay número de teléfono disponible');
+      return;
+    }
     Linking.openURL(`sms:${phoneNumber}`);
   };
 

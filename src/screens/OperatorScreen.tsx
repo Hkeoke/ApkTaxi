@@ -96,6 +96,7 @@ const OperatorHomeScreen: React.FC<OperatorScreenProps> = ({
     price: '',
     observations: '',
     vehicle_type: '4_ruedas' as '2_ruedas' | '4_ruedas',
+    passenger_phone: '',
   });
 
   // Agregar función para obtener dirección desde coordenadas
@@ -331,7 +332,8 @@ const OperatorHomeScreen: React.FC<OperatorScreenProps> = ({
         search_radius: searchRadius,
         observations: requestForm.observations,
         vehicle_type: requestForm.vehicle_type,
-        status: 'broadcasting', // Asegurarnos que el estado inicial es correcto
+        passenger_phone: requestForm.passenger_phone,
+        status: 'broadcasting',
       };
 
       console.log('Enviando solicitud:', requestData);
@@ -345,6 +347,7 @@ const OperatorHomeScreen: React.FC<OperatorScreenProps> = ({
         price: '',
         observations: '',
         vehicle_type: '4_ruedas',
+        passenger_phone: '',
       });
       setOriginCoords(null);
       setDestinationCoords(null);
@@ -683,6 +686,17 @@ const OperatorHomeScreen: React.FC<OperatorScreenProps> = ({
               numberOfLines={3}
               onChangeText={text =>
                 setRequestForm(prev => ({...prev, observations: text}))
+              }
+            />
+
+            <TextInput
+              style={styles.input}
+              placeholder="Teléfono del cliente"
+              placeholderTextColor="#999"
+              value={requestForm.passenger_phone}
+              keyboardType="phone-pad"
+              onChangeText={text =>
+                setRequestForm(prev => ({...prev, passenger_phone: text}))
               }
             />
 

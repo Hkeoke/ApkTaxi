@@ -49,7 +49,8 @@ create table trips (
   status text CHECK (status IN ('pending', 'in_progress', 'pickup_reached', 'completed', 'cancelled')) DEFAULT 'pending',
   price decimal NOT NULL,
   created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
-  completed_at timestamp with time zone
+  completed_at timestamp with time zone,
+  passenger_phone text
 );
 
 -- consultas para crear usuarios 
@@ -95,9 +96,9 @@ insert into driver_profiles (id, first_name, last_name, license_number, phone_nu
 select id, 'Carlos', 'García', 'LIC789012', '+51999888666', 'Toyota Corolla', '4_ruedas'
 from new_driver;
 
--- Agregar campo vehicle_type a la tabla trip_requests
+-- Agregar columna passenger_phone a la tabla trip_requests
 ALTER TABLE trip_requests 
-ADD COLUMN vehicle_type text CHECK (vehicle_type IN ('2_ruedas', '4_ruedas')) NOT NULL DEFAULT '4_ruedas';
+ADD COLUMN passenger_phone text;
 
 -- Primero, si existe la restricción foreign key anterior, la eliminamos
 ALTER TABLE trip_requests 
@@ -201,10 +202,11 @@ BEGIN
     destination_lat,
     destination_lng,
     price,
-    status
+    status,
+    passenger_phone
   )
   VALUES (
-    request_data.driver_id,  -- Usar el driver_id de la solicitud
+    request_data.driver_id,
     request_data.created_by,
     request_data.origin,
     request_data.destination,
@@ -213,7 +215,8 @@ BEGIN
     request_data.destination_lat,
     request_data.destination_lng,
     request_data.price,
-    'in_progress'::text
+    'in_progress'::text,
+    request_data.passenger_phone
   )
   RETURNING *
   INTO new_trip;
