@@ -65,7 +65,7 @@ const OperatorTripsScreen = ({user}: {user: {id: string}}) => {
               if (item.type === 'request') {
                 await tripRequestService.updateRequestStatus(
                   item.id,
-                  'cancelled',
+                  'rejected',
                 );
               } else {
                 await tripService.updateTripStatus(item.id, 'cancelled');
