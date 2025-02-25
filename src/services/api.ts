@@ -815,25 +815,75 @@ export const tripService = {
   },
 
   async getOperatorTrips(operatorId: string) {
-    const {data, error} = await supabase
-      .from('trips')
-      .select(
-        `
-        id,
-        status,
-        price,
-        origin,
-        destination,
-        created_at,
-        completed_at,
-        created_by
-      `,
-      )
-      .eq('created_by', operatorId)
-      .order('created_at', {ascending: false});
+    try {
+      // Obtener fecha inicio y fin del día actual
+      const today = new Date();
+      const startOfDay = new Date(today.setHours(0, 0, 0, 0)).toISOString();
+      const endOfDay = new Date(today.setHours(23, 59, 59, 999)).toISOString();
 
-    if (error) throw error;
-    return data;
+      // Obtener los viajes regulares del día
+      const {data: trips, error: tripsError} = await supabase
+        .from('trips')
+        .select(
+          `
+          id,
+          status,
+          price,
+          origin,
+          destination,
+          created_at,
+          completed_at,
+          created_by
+        `,
+        )
+        .eq('created_by', operatorId)
+        .gte('created_at', startOfDay)
+        .lte('created_at', endOfDay)
+        .order('created_at', {ascending: false});
+
+      if (tripsError) throw tripsError;
+
+      // Obtener las solicitudes en broadcasting del día
+      const {data: requests, error: requestsError} = await supabase
+        .from('trip_requests')
+        .select(
+          `
+          id,
+          status,
+          price,
+          origin,
+          destination,
+          created_at
+        `,
+        )
+        .eq('created_by', operatorId)
+        .eq('status', 'broadcasting')
+        .gte('created_at', startOfDay)
+        .lte('created_at', endOfDay)
+        .order('created_at', {ascending: false});
+
+      if (requestsError) throw requestsError;
+
+      const formattedRequests =
+        requests?.map(req => ({
+          ...req,
+          type: 'request' as const,
+        })) || [];
+
+      const formattedTrips =
+        trips?.map(trip => ({
+          ...trip,
+          type: 'trip' as const,
+        })) || [];
+
+      return [...formattedRequests, ...formattedTrips].sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      );
+    } catch (error) {
+      console.error('Error fetching operator trips:', error);
+      throw error;
+    }
   },
 };
 export const analyticsService = {

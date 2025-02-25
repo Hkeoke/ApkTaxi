@@ -8,19 +8,26 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import {tripService} from '../services/api';
+import {tripService, tripRequestService} from '../services/api';
 import {Clock, Ban, CheckCircle, AlertCircle} from 'lucide-react-native';
 
-interface Trip {
+interface TripOrRequest {
   id: string;
-  status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
+  type: 'trip' | 'request';
+  status:
+    | 'broadcasting'
+    | 'pending'
+    | 'in_progress'
+    | 'completed'
+    | 'cancelled';
   price: number;
   origin: string;
   destination: string;
+  created_at: string;
 }
 
 const OperatorTripsScreen = ({user}: {user: {id: string}}) => {
-  const [trips, setTrips] = useState<Trip[]>([]);
+  const [items, setItems] = useState<TripOrRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('pending');
 
@@ -28,7 +35,7 @@ const OperatorTripsScreen = ({user}: {user: {id: string}}) => {
     try {
       setLoading(true);
       const operatorTrips = await tripService.getOperatorTrips(user.id);
-      setTrips(operatorTrips);
+      setItems(operatorTrips);
     } catch (error) {
       console.error('Error cargando viajes:', error);
       Alert.alert('Error', 'No se pudieron cargar los viajes');
@@ -44,7 +51,7 @@ const OperatorTripsScreen = ({user}: {user: {id: string}}) => {
     return () => clearInterval(interval);
   }, []);
 
-  const handleCancelTrip = async (tripId: string) => {
+  const handleCancelTrip = async (item: TripOrRequest) => {
     Alert.alert(
       'Confirmar Cancelación',
       '¿Estás seguro de que deseas cancelar este viaje?',
@@ -55,8 +62,15 @@ const OperatorTripsScreen = ({user}: {user: {id: string}}) => {
           style: 'destructive',
           onPress: async () => {
             try {
-              await tripService.updateTripStatus(tripId, 'cancelled');
-              loadTrips(); // Recargar viajes
+              if (item.type === 'request') {
+                await tripRequestService.updateRequestStatus(
+                  item.id,
+                  'cancelled',
+                );
+              } else {
+                await tripService.updateTripStatus(item.id, 'cancelled');
+              }
+              loadTrips();
               Alert.alert('Éxito', 'Viaje cancelado correctamente');
             } catch (error) {
               console.error('Error cancelando viaje:', error);
@@ -70,6 +84,7 @@ const OperatorTripsScreen = ({user}: {user: {id: string}}) => {
 
   const getStatusColor = (status: string) => {
     const colors = {
+      broadcasting: '#8b5cf6', // Morado para solicitudes en broadcasting
       pending: '#f59e0b',
       in_progress: '#3b82f6',
       completed: '#10b981',
@@ -80,6 +95,8 @@ const OperatorTripsScreen = ({user}: {user: {id: string}}) => {
 
   const getStatusIcon = (status: string) => {
     switch (status) {
+      case 'broadcasting':
+        return <AlertCircle size={20} color={getStatusColor(status)} />;
       case 'pending':
         return <Clock size={20} color={getStatusColor(status)} />;
       case 'in_progress':
@@ -93,8 +110,10 @@ const OperatorTripsScreen = ({user}: {user: {id: string}}) => {
     }
   };
 
-  const renderTripItem = ({item}: {item: any}) => {
-    const canCancel = ['pending', 'in_progress'].includes(item.status);
+  const renderTripItem = ({item}: {item: TripOrRequest}) => {
+    const canCancel = ['broadcasting', 'pending', 'in_progress'].includes(
+      item.status,
+    );
 
     return (
       <View style={styles.tripCard}>
@@ -103,7 +122,9 @@ const OperatorTripsScreen = ({user}: {user: {id: string}}) => {
             {getStatusIcon(item.status)}
             <Text
               style={[styles.statusText, {color: getStatusColor(item.status)}]}>
-              {item.status === 'pending'
+              {item.status === 'broadcasting'
+                ? 'Buscando Chofer'
+                : item.status === 'pending'
                 ? 'Pendiente'
                 : item.status === 'in_progress'
                 ? 'En Progreso'
@@ -129,7 +150,7 @@ const OperatorTripsScreen = ({user}: {user: {id: string}}) => {
         {canCancel && (
           <TouchableOpacity
             style={styles.cancelButton}
-            onPress={() => handleCancelTrip(item.id)}>
+            onPress={() => handleCancelTrip(item)}>
             <Text style={styles.cancelButtonText}>Cancelar Viaje</Text>
           </TouchableOpacity>
         )}
@@ -137,11 +158,11 @@ const OperatorTripsScreen = ({user}: {user: {id: string}}) => {
     );
   };
 
-  const filteredTrips = trips.filter(trip => {
+  const filteredItems = items.filter(item => {
     if (activeTab === 'active') {
-      return ['pending', 'in_progress'].includes(trip.status);
+      return ['broadcasting', 'pending', 'in_progress'].includes(item.status);
     }
-    return trip.status === activeTab;
+    return item.status === activeTab;
   });
 
   return (
@@ -186,7 +207,7 @@ const OperatorTripsScreen = ({user}: {user: {id: string}}) => {
         <ActivityIndicator style={styles.loader} size="large" color="#0891b2" />
       ) : (
         <FlatList
-          data={filteredTrips}
+          data={filteredItems}
           renderItem={renderTripItem}
           keyExtractor={item => item.id}
           contentContainerStyle={styles.listContainer}

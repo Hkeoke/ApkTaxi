@@ -32,4 +32,7 @@ target 'ApkTaxi' do
       # :ccache_enabled => true
     )
   end
+
+  permissions_path = '../node_modules/react-native-permissions/ios'
+  pod 'Permission-Notifications', :path => "#{permissions_path}/Notifications"
 end

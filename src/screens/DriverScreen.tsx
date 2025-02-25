@@ -13,6 +13,8 @@ import {
   Animated,
   Pressable,
   Image,
+  AppState,
+  AppStateStatus,
 } from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 
@@ -37,6 +39,8 @@ import {
   XIcon,
 } from 'lucide-react-native';
 import Sidebar from '../components/Sidebar';
+import notifee, {AndroidImportance} from '@notifee/react-native';
+import Sound from 'react-native-sound';
 
 interface TripRequest {
   id: string;
@@ -108,6 +112,8 @@ const DriverHomeScreen: React.FC<{
   const navigation = useNavigation();
   const [scaleAnim] = useState(() => new Animated.Value(1));
   const [rejectedRequests, setRejectedRequests] = useState<string[]>([]);
+  const [sound, setSound] = useState<Sound | null>(null);
+  const [notificationId, setNotificationId] = useState<string | null>(null);
 
   const calculateRoute = async (
     start: {latitude: number; longitude: number},
@@ -191,11 +197,69 @@ const DriverHomeScreen: React.FC<{
     });
   };
 
+  const setupSound = () => {
+    Sound.setCategory('Playback');
+    const newSound = new Sound(
+      'notification_sound.mp3',
+      Sound.MAIN_BUNDLE,
+      error => {
+        if (error) {
+          console.error('Error loading sound:', error);
+          return;
+        }
+        newSound.setNumberOfLoops(-1); // Reproducir en loop
+      },
+    );
+    setSound(newSound);
+  };
+
+  const showNotification = async (request: TripRequest) => {
+    try {
+      // Crear canal para Android
+      const channelId = await notifee.createChannel({
+        id: 'trip_requests',
+        name: 'Solicitudes de Viaje',
+        importance: AndroidImportance.HIGH,
+        sound: 'notification_sound',
+      });
+
+      // Mostrar la notificación
+      const id = await notifee.displayNotification({
+        title: '¡Nueva solicitud de viaje!',
+        body: `Origen: ${request.origin}\nDestino: ${request.destination}`,
+        android: {
+          channelId,
+          pressAction: {
+            id: 'default',
+          },
+          importance: AndroidImportance.HIGH,
+          sound: 'notification_sound',
+        },
+        ios: {
+          sound: 'notification_sound.wav',
+        },
+      });
+
+      setNotificationId(id);
+    } catch (error) {
+      console.error('Error showing notification:', error);
+    }
+  };
+
+  const stopAlerts = async () => {
+    if (sound) {
+      sound.stop();
+    }
+    if (notificationId) {
+      await notifee.cancelNotification(notificationId);
+      setNotificationId(null);
+    }
+  };
+
   useEffect(() => {
     const fetchPendingRequests = async () => {
       if (!position || !isOnDuty) return;
 
-      // Solo buscar nuevas solicitudes si no hay solicitudes pendientes ni viaje activo
       if (pendingRequests.length === 0 && !activeTrip) {
         try {
           const requests = await tripRequestService.getDriverPendingRequests(
@@ -203,12 +267,15 @@ const DriverHomeScreen: React.FC<{
             user.driver_profiles.vehicle_type,
           );
 
-          // Filtrar solicitudes rechazadas
           const filteredRequests = requests.filter(
             req => !rejectedRequests.includes(req.id),
           );
 
           if (filteredRequests.length > 0) {
+            // Mostrar notificación y reproducir sonido
+            showNotification(filteredRequests[0]);
+            sound?.play();
+
             // Calcular la ruta entre origen y destino de la solicitud
             const route = await calculateRoute(
               {
@@ -248,11 +315,28 @@ const DriverHomeScreen: React.FC<{
       }
     };
 
+    // Configurar AppState listener
+    const subscription = AppState.addEventListener(
+      'change',
+      (nextAppState: AppStateStatus) => {
+        if (isOnDuty) {
+          fetchPendingRequests();
+        }
+      },
+    );
+
     if (isOnDuty && position) {
       fetchPendingRequests();
       const interval = setInterval(fetchPendingRequests, 10000);
-      return () => clearInterval(interval);
+      return () => {
+        clearInterval(interval);
+        subscription.remove();
+      };
     }
+
+    return () => {
+      subscription.remove();
+    };
   }, [
     position,
     isOnDuty,
@@ -261,6 +345,7 @@ const DriverHomeScreen: React.FC<{
     rejectedRequests,
     activeTrip,
     pendingRequests,
+    sound,
   ]);
 
   const handleRequestResponse = async (
@@ -268,6 +353,9 @@ const DriverHomeScreen: React.FC<{
     status: 'accepted' | 'rejected',
   ) => {
     try {
+      // Detener sonido y notificación
+      await stopAlerts();
+
       if (status === 'rejected') {
         setRejectedRequests(prev => [...prev, requestId]);
         setPendingRequests([]);
@@ -650,6 +738,16 @@ const DriverHomeScreen: React.FC<{
       useNativeDriver: true,
     }).start();
   };
+
+  // Inicializar el sonido cuando se monta el componente
+  useEffect(() => {
+    setupSound();
+    return () => {
+      if (sound) {
+        sound.release();
+      }
+    };
+  }, []);
 
   return (
     <View style={styles.container}>
