@@ -31,6 +31,8 @@ import OperatorsListScreen from './src/screens/OperatorsListScreen';
 import OperatorReportsScreen from './src/screens/OperatorReportsScreen';
 import GeneralReportsScreen from './src/screens/GeneralReportsScreen';
 import DriverTripsScreen from './src/screens/DriverTripsScreen';
+import AdminDriverBalances from './src/screens/AdminDriverBalances';
+import DriverBalanceHistory from './src/screens/DriverBalanceHistory';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -137,7 +139,17 @@ function NavigationStack() {
         // App Stacks según el rol
         <>
           {user.role === 'chofer' && (
-            <Stack.Screen name="DriverTabs" component={DriverTabs} />
+            <>
+              <Stack.Screen name="DriverTabs" component={DriverTabs} />
+              <Stack.Screen
+                name="DriverBalanceHistory"
+                component={DriverBalanceHistory}
+                options={{
+                  headerShown: true,
+                  title: 'Historial de Balance',
+                }}
+              />
+            </>
           )}
           {user.role === 'operador' && (
             <Stack.Screen name="OperatorTabs" component={OperatorTabs} />
@@ -249,6 +261,14 @@ function NavigationStack() {
                 options={{
                   headerShown: true,
                   title: 'Reportes Generales',
+                }}
+              />
+              <Stack.Screen
+                name="AdminDriverBalances"
+                component={AdminDriverBalances}
+                options={{
+                  headerShown: true,
+                  title: 'Gestionar Balances',
                 }}
               />
             </>

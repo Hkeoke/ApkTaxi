@@ -7,10 +7,20 @@ import {
   Dimensions,
   Animated,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
-import {LogOut, User, Map, Users, FileText, Clock} from 'lucide-react-native';
+import {
+  LogOut,
+  User,
+  Map,
+  Users,
+  FileText,
+  Clock,
+  Wallet,
+} from 'lucide-react-native';
 import {useAuthContext} from '../contexts/AuthContext';
 import {useNavigation, NavigationProp} from '@react-navigation/native';
+import {driverService} from '../services/api';
 
 const {height} = Dimensions.get('window');
 
@@ -26,11 +36,38 @@ type RootStackParamList = {
   DriverMapScreen: undefined;
   GeneralReportsScreen: undefined;
   DriverTrips: undefined;
+  DriverBalanceHistory: undefined;
+  AdminDriverBalances: undefined;
 };
 
 const Sidebar = ({isVisible, onClose, role}: SidebarProps) => {
   const {user, logout} = useAuthContext();
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
+  const [currentBalance, setCurrentBalance] = React.useState<number | null>(
+    null,
+  );
+  const [isLoading, setIsLoading] = React.useState(false);
+
+  const fetchBalance = async () => {
+    if (user?.id && role === 'chofer' && isVisible) {
+      setIsLoading(true);
+      try {
+        const driverProfile = await driverService.getDriverProfile(user.id);
+        setCurrentBalance(driverProfile.balance);
+      } catch (error) {
+        console.error('Error al obtener balance:', error);
+        setCurrentBalance(user?.driver_profiles?.balance ?? 0);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+  };
+
+  React.useEffect(() => {
+    if (isVisible) {
+      fetchBalance();
+    }
+  }, [isVisible]);
 
   const slideAnim = React.useRef(new Animated.Value(-300)).current;
 
@@ -93,13 +130,17 @@ const Sidebar = ({isVisible, onClose, role}: SidebarProps) => {
             {role === 'chofer' && user?.driver_profiles && (
               <View style={styles.balanceContainer}>
                 <Text style={styles.balanceLabel}>Balance Actual:</Text>
-                <Text
-                  style={[
-                    styles.balanceAmount,
-                    user.driver_profiles.balance < 0 && styles.negativeBalance,
-                  ]}>
-                  ${user.driver_profiles.balance?.toFixed(2) || '0.00'}
-                </Text>
+                {isLoading ? (
+                  <ActivityIndicator size="small" color="#22C55E" />
+                ) : (
+                  <Text
+                    style={[
+                      styles.balanceAmount,
+                      (currentBalance ?? 0) < 0 && styles.negativeBalance,
+                    ]}>
+                    ${(currentBalance ?? 0).toFixed(2)}
+                  </Text>
+                )}
               </View>
             )}
           </View>
@@ -134,6 +175,15 @@ const Sidebar = ({isVisible, onClose, role}: SidebarProps) => {
                   <FileText color="#0891b2" size={24} />
                   <Text style={styles.menuItemText}>Reportes Generales</Text>
                 </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => {
+                    navigation.navigate('AdminDriverBalances');
+                    onClose();
+                  }}>
+                  <Wallet color="#0891b2" size={24} />
+                  <Text style={styles.menuItemText}>Gestionar Balances</Text>
+                </TouchableOpacity>
               </View>
             )}
 
@@ -147,6 +197,15 @@ const Sidebar = ({isVisible, onClose, role}: SidebarProps) => {
                   }}>
                   <Clock color="#0891b2" size={24} />
                   <Text style={styles.menuItemText}>Mis Viajes</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => {
+                    navigation.navigate('DriverBalanceHistory');
+                    onClose();
+                  }}>
+                  <Wallet color="#0891b2" size={24} />
+                  <Text style={styles.menuItemText}>Historial de Balance</Text>
                 </TouchableOpacity>
               </View>
             )}

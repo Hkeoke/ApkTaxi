@@ -363,6 +363,10 @@ const DriverHomeScreen: React.FC<{
       await tripRequestService.updateRequestStatus(requestId, status);
 
       if (status === 'accepted') {
+        await tripRequestService.updateTripRequest(requestId, {
+          driver_id: user.id,
+          status: 'accepted',
+        });
         const tripDetails = (await tripRequestService.convertRequestToTrip(
           requestId,
         )) as Trip;
@@ -507,13 +511,35 @@ const DriverHomeScreen: React.FC<{
   const handleTripCompletion = async () => {
     try {
       if (!activeTrip?.id) return;
+
+      // Calcular el descuento (10% del precio del viaje)
+      const commission = activeTrip.price * 0.1;
+
+      // Primero aplicamos el descuento al balance
+      await driverService.updateDriverBalance(
+        user.id,
+        commission,
+        'descuento',
+        `Comisión del viaje #${activeTrip.id}`,
+        user.id,
+      );
+
+      // Luego completamos el viaje
       await tripRequestService.updateTripStatus(activeTrip.id, 'completed');
+
+      // Resetear estados
       setActiveTrip(null);
       setTripPhase(null);
       setCurrentRoute(null);
       setPendingRequests([]);
       setRejectedRequests([]);
-      Alert.alert('Éxito', 'Viaje completado exitosamente');
+
+      Alert.alert(
+        'Viaje Completado',
+        `Viaje completado exitosamente.\nSe ha descontado una comisión de $${commission.toFixed(
+          2,
+        )}`,
+      );
     } catch (error) {
       console.error('Error completing trip:', error);
       Alert.alert('Error', 'No se pudo completar el viaje');
@@ -968,17 +994,24 @@ const DriverHomeScreen: React.FC<{
             </View>
             <View style={styles.routeDetails}>
               <View style={styles.routePoint}>
-                <MapPinIcon size={20} color="#3B82F6" />
+                <MessageSquareIcon size={20} color="#6366F1" />
                 <Text style={styles.routeText} numberOfLines={2}>
-                  {pendingRequests[0].observations}
+                  {pendingRequests[0].observations || 'Sin observaciones'}
                 </Text>
               </View>
-              {/*<View style={styles.routePoint}>
-                <FlagIcon size={20} color="#22C55E" />
-                <Text style={styles.routeText} numberOfLines={2}>
-                  {pendingRequests[0].destination}
+              <View style={styles.routePoint}>
+                <View style={styles.priceIconContainer}>
+                  <Text style={styles.currencySymbol}>$</Text>
+                </View>
+                <Text
+                  style={[styles.routeText, styles.priceText]}
+                  numberOfLines={1}>
+                  {pendingRequests[0].price.toLocaleString('es-MX', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
                 </Text>
-              </View>*/}
+              </View>
             </View>
             <View style={styles.routeInfo}>
               <Text style={styles.routeInfoText}>
@@ -1290,6 +1323,24 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     resizeMode: 'contain',
+  },
+  priceIconContainer: {
+    width: 20,
+    height: 20,
+    backgroundColor: '#22C55E',
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  currencySymbol: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  priceText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#22C55E',
   },
 });
 

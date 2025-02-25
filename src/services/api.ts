@@ -6,6 +6,7 @@ import {
   Trip,
   Role,
   TripStatus,
+  BalanceOperationType,
 } from '../utils/db_types';
 
 // En tripService
@@ -167,17 +168,30 @@ export const tripRequestService = {
         throw new Error('No se pudo obtener la solicitud');
       }
 
+      // Verificar que tenemos el driver_id
+      if (!request.driver_id) {
+        throw new Error('La solicitud no tiene un conductor asignado');
+      }
+
+      console.log('Datos de la solicitud antes de convertir:', request); // Para debugging
+
       // Llamar a la función de la base de datos con los datos completos
       const {data, error} = await supabase.rpc('convert_request_to_trip', {
         request_id: requestId,
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error en convert_request_to_trip:', error);
+        throw error;
+      }
+
+      console.log('Viaje creado:', data); // Para debugging
 
       // Asegurarnos que el phone_number se incluye en los datos devueltos
       return {
         ...data,
         phone_number: request.phone_number,
+        driver_id: request.driver_id, // Asegurarnos que el driver_id se mantiene
       };
     } catch (error) {
       console.error('Error converting request to trip:', error);
@@ -202,6 +216,23 @@ export const tripRequestService = {
 
     if (error) throw error;
     return data as Trip;
+  },
+
+  async updateTripRequest(requestId: string, updates: any) {
+    try {
+      const {data, error} = await supabase
+        .from('trip_requests')
+        .update(updates)
+        .eq('id', requestId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error updating trip request:', error);
+      throw error;
+    }
   },
 };
 
@@ -578,6 +609,88 @@ export const driverService = {
       };
     }
   },
+
+  async updateDriverBalance(
+    driverId: string,
+    amount: number,
+    type: BalanceOperationType,
+    description: string,
+    adminId: string,
+  ) {
+    try {
+      // Iniciar una transacción
+      const {data: balanceHistory, error: historyError} = await supabase
+        .from('balance_history')
+        .insert({
+          driver_id: driverId,
+          amount: amount,
+          type: type,
+          description: description,
+          created_by: adminId,
+        })
+        .select()
+        .single();
+
+      if (historyError) throw historyError;
+
+      // Actualizar el balance del conductor
+      // Si es descuento, el amount se resta (negativo)
+      const finalAmount = type === 'descuento' ? -amount : amount;
+
+      const {error: updateError} = await supabase.rpc(
+        'increment_driver_balance',
+        {
+          driver_id: driverId,
+          amount: finalAmount,
+        },
+      );
+
+      if (updateError) throw updateError;
+
+      return balanceHistory;
+    } catch (error) {
+      console.error('Error updating driver balance:', error);
+      throw error;
+    }
+  },
+
+  async getBalanceHistory(
+    driverId: string,
+    startDate?: string,
+    endDate?: string,
+  ) {
+    try {
+      let query = supabase
+        .from('balance_history')
+        .select(
+          `
+          *,
+          users:created_by (
+            role,
+            operator_profiles(first_name, last_name),
+            driver_profiles(first_name, last_name)
+          )
+        `,
+        )
+        .eq('driver_id', driverId)
+        .order('created_at', {ascending: false});
+
+      if (startDate) {
+        query = query.gte('created_at', startDate);
+      }
+      if (endDate) {
+        query = query.lte('created_at', endDate);
+      }
+
+      const {data, error} = await query;
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error fetching balance history:', error);
+      return [];
+    }
+  },
 };
 
 export const operatorService = {
@@ -783,12 +896,7 @@ export const tripService = {
           price,
           origin,
           destination,
-          created_at,
-          driver_profiles!inner (
-            id,
-            first_name,
-            last_name
-          )
+          created_at
         `,
         )
         .eq('driver_id', driverId)
@@ -800,14 +908,7 @@ export const tripService = {
         throw error;
       }
 
-      // Calculamos la comisión (10%) para cada viaje
-      const tripsWithCommission =
-        data?.map(trip => ({
-          ...trip,
-          commission: trip.price * 0.1,
-        })) || [];
-
-      return tripsWithCommission;
+      return data || [];
     } catch (error) {
       console.error('Error fetching driver trips:', error);
       return [];

@@ -53,6 +53,21 @@ create table trips (
   passenger_phone text
 );
 
+-- Agregar tabla para el historial de balance
+CREATE TABLE balance_history (
+  id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
+  driver_id uuid REFERENCES driver_profiles(id) NOT NULL,
+  amount decimal NOT NULL,
+  type text CHECK (type IN ('recarga', 'descuento', 'viaje')) NOT NULL,
+  description text NOT NULL,
+  created_by uuid REFERENCES users(id) NOT NULL,
+  created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Crear índices para mejorar el rendimiento
+CREATE INDEX idx_balance_history_driver_id ON balance_history(driver_id);
+CREATE INDEX idx_balance_history_created_at ON balance_history(created_at);
+
 -- consultas para crear usuarios 
 
 
@@ -237,7 +252,7 @@ CREATE OR REPLACE FUNCTION increment_driver_balance(
 ) RETURNS void AS $$
 BEGIN
   UPDATE driver_profiles
-  SET balance = balance + amount  -- amount será negativo cuando es una deducción
+  SET balance = balance + amount
   WHERE id = driver_id;
 END;
 $$ LANGUAGE plpgsql;

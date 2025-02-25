@@ -55,3 +55,15 @@ export interface Trip {
   price: number;
   completed_at?: string;
 }
+
+export type BalanceOperationType = 'recarga' | 'descuento' | 'viaje';
+
+export interface BalanceHistory {
+  id: string;
+  driver_id: string;
+  amount: number;
+  type: BalanceOperationType;
+  description: string;
+  created_by: string;
+  created_at: string;
+}
