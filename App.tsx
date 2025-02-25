@@ -34,7 +34,17 @@ import DriverTripsScreen from './src/screens/DriverTripsScreen';
 import AdminDriverBalances from './src/screens/AdminDriverBalances';
 import DriverBalanceHistory from './src/screens/DriverBalanceHistory';
 
-const Stack = createNativeStackNavigator();
+export type RootStackParamList = {
+  Login: undefined;
+  AdminTabs: {
+    screen?: string;
+  };
+  DriverTabs: undefined;
+  OperatorTabs: undefined;
+  // ... otros tipos de rutas ...
+};
+
+const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();
 function AdminTabs() {
   const {user} = useAuthContext();
@@ -53,6 +63,16 @@ function AdminTabs() {
           tabBarIcon: ({color, size}) => <Users color={color} size={size} />,
         }}
       />
+      <Tab.Screen
+        name="AdminTrips"
+        options={{
+          title: 'Mis Viajes',
+          tabBarIcon: ({color, size}) => (
+            <ClipboardList color={color} size={size} />
+          ),
+        }}>
+        {() => <OperatorTripsScreen user={user} />}
+      </Tab.Screen>
     </Tab.Navigator>
   );
 }
@@ -131,13 +151,12 @@ function NavigationStack() {
   return (
     <Stack.Navigator screenOptions={{headerShown: false}}>
       {!user ? (
-        // Auth Stack
-        <>
-          <Stack.Screen name="Login" component={LoginScreen} />
-        </>
+        <Stack.Screen name="Login" component={LoginScreen} />
       ) : (
-        // App Stacks según el rol
         <>
+          {user.role === 'admin' && (
+            <Stack.Screen name="AdminTabs" component={AdminTabs} />
+          )}
           {user.role === 'chofer' && (
             <>
               <Stack.Screen name="DriverTabs" component={DriverTabs} />
@@ -156,7 +175,6 @@ function NavigationStack() {
           )}
           {user.role === 'admin' && (
             <>
-              <Stack.Screen name="AdminTabs" component={AdminTabs} />
               <Stack.Screen
                 name="OperatorScreen"
                 options={{

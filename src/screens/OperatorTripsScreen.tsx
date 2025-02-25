@@ -26,7 +26,7 @@ interface TripOrRequest {
   created_at: string;
 }
 
-const OperatorTripsScreen = ({user}: {user: {id: string}}) => {
+const OperatorTripsScreen = ({user}: {user: {id: string; role?: string}}) => {
   const [items, setItems] = useState<TripOrRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('pending');

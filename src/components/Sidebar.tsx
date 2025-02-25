@@ -38,6 +38,7 @@ type RootStackParamList = {
   DriverTrips: undefined;
   DriverBalanceHistory: undefined;
   AdminDriverBalances: undefined;
+  AdminTabs: undefined;
 };
 
 const Sidebar = ({isVisible, onClose, role}: SidebarProps) => {
@@ -183,6 +184,17 @@ const Sidebar = ({isVisible, onClose, role}: SidebarProps) => {
                   }}>
                   <Wallet color="#0891b2" size={24} />
                   <Text style={styles.menuItemText}>Gestionar Balances</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => {
+                    navigation.navigate('AdminTabs', {
+                      screen: 'AdminTrips',
+                    });
+                    onClose();
+                  }}>
+                  <Clock color="#0891b2" size={24} />
+                  <Text style={styles.menuItemText}>Mis Viajes</Text>
                 </TouchableOpacity>
               </View>
             )}
