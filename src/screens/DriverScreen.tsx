@@ -107,6 +107,7 @@ const DriverHomeScreen: React.FC<{
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
   const navigation = useNavigation();
   const [scaleAnim] = useState(() => new Animated.Value(1));
+  const [rejectedRequests, setRejectedRequests] = useState<string[]>([]);
 
   const calculateRoute = async (
     start: {latitude: number; longitude: number},
@@ -192,67 +193,58 @@ const DriverHomeScreen: React.FC<{
 
   useEffect(() => {
     const fetchPendingRequests = async () => {
-      if (!position) {
-        console.log('No hay posición disponible');
-        return;
-      }
+      if (!position || !isOnDuty) return;
 
-      if (!isOnDuty) {
-        console.log('Conductor no está en servicio');
-        return;
-      }
-
-      try {
-        console.log('Estado del conductor:', {
-          id: user.id,
-          vehicleType: user.driver_profiles.vehicle_type,
-          position,
-          isOnDuty,
-        });
-
-        const requests = await tripRequestService.getDriverPendingRequests(
-          user.id,
-          user.driver_profiles.vehicle_type,
-        );
-
-        console.log('Solicitudes pendientes recibidas:', requests);
-
-        if (requests.length > 0) {
-          // Calcular la ruta entre origen y destino de la solicitud
-          const route = await calculateRoute(
-            {
-              latitude: requests[0].origin_lat,
-              longitude: requests[0].origin_lng,
-            },
-            {
-              latitude: requests[0].destination_lat,
-              longitude: requests[0].destination_lng,
-            },
+      // Solo buscar nuevas solicitudes si no hay solicitudes pendientes ni viaje activo
+      if (pendingRequests.length === 0 && !activeTrip) {
+        try {
+          const requests = await tripRequestService.getDriverPendingRequests(
+            user.id,
+            user.driver_profiles.vehicle_type,
           );
-          setCurrentRoute(route);
 
-          // Ajustar el mapa para mostrar la ruta completa
-          const coordinates = [
-            {
-              latitude: requests[0].origin_lat,
-              longitude: requests[0].origin_lng,
-            },
-            ...route.polyline,
-            {
-              latitude: requests[0].destination_lat,
-              longitude: requests[0].destination_lng,
-            },
-          ];
+          // Filtrar solicitudes rechazadas
+          const filteredRequests = requests.filter(
+            req => !rejectedRequests.includes(req.id),
+          );
 
-          mapRef.current?.fitToCoordinates(coordinates, {
-            edgePadding: {top: 50, right: 50, bottom: 50, left: 50},
-            animated: true,
-          });
+          if (filteredRequests.length > 0) {
+            // Calcular la ruta entre origen y destino de la solicitud
+            const route = await calculateRoute(
+              {
+                latitude: filteredRequests[0].origin_lat,
+                longitude: filteredRequests[0].origin_lng,
+              },
+              {
+                latitude: filteredRequests[0].destination_lat,
+                longitude: filteredRequests[0].destination_lng,
+              },
+            );
+            setCurrentRoute(route);
+
+            // Ajustar el mapa para mostrar la ruta completa
+            const coordinates = [
+              {
+                latitude: filteredRequests[0].origin_lat,
+                longitude: filteredRequests[0].origin_lng,
+              },
+              ...route.polyline,
+              {
+                latitude: filteredRequests[0].destination_lat,
+                longitude: filteredRequests[0].destination_lng,
+              },
+            ];
+
+            mapRef.current?.fitToCoordinates(coordinates, {
+              edgePadding: {top: 50, right: 50, bottom: 50, left: 50},
+              animated: true,
+            });
+          }
+
+          setPendingRequests(filteredRequests);
+        } catch (error) {
+          console.error('Error al obtener solicitudes:', error);
         }
-
-        setPendingRequests(requests);
-      } catch (error) {
-        console.error('Error al obtener solicitudes:', error);
       }
     };
 
@@ -261,13 +253,25 @@ const DriverHomeScreen: React.FC<{
       const interval = setInterval(fetchPendingRequests, 10000);
       return () => clearInterval(interval);
     }
-  }, [position, isOnDuty, user.id, user.driver_profiles.vehicle_type]);
+  }, [
+    position,
+    isOnDuty,
+    user.id,
+    user.driver_profiles.vehicle_type,
+    rejectedRequests,
+    activeTrip,
+    pendingRequests,
+  ]);
 
   const handleRequestResponse = async (
     requestId: string,
     status: 'accepted' | 'rejected',
   ) => {
     try {
+      if (status === 'rejected') {
+        setRejectedRequests(prev => [...prev, requestId]);
+        setPendingRequests([]);
+      }
       await tripRequestService.updateRequestStatus(requestId, status);
 
       if (status === 'accepted') {
@@ -419,6 +423,8 @@ const DriverHomeScreen: React.FC<{
       setActiveTrip(null);
       setTripPhase(null);
       setCurrentRoute(null);
+      setPendingRequests([]);
+      setRejectedRequests([]);
       Alert.alert('Éxito', 'Viaje completado exitosamente');
     } catch (error) {
       console.error('Error completing trip:', error);
