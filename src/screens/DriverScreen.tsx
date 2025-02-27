@@ -41,6 +41,7 @@ import {
 import Sidebar from '../components/Sidebar';
 import notifee, {AndroidImportance} from '@notifee/react-native';
 import Sound from 'react-native-sound';
+import BackgroundService from 'react-native-background-actions';
 
 interface TripRequest {
   id: string;
@@ -256,40 +257,37 @@ const DriverHomeScreen: React.FC<{
     }
   };
 
-  useEffect(() => {
-    const fetchPendingRequests = async () => {
-      if (!position || !isOnDuty) return;
+  const fetchPendingRequests = async () => {
+    if (!position || !isOnDuty) return;
 
-      if (pendingRequests.length === 0 && !activeTrip) {
-        try {
-          const requests = await tripRequestService.getDriverPendingRequests(
-            user.id,
-            user.driver_profiles.vehicle_type,
+    if (pendingRequests.length === 0 && !activeTrip) {
+      try {
+        const requests = await tripRequestService.getDriverPendingRequests(
+          user.id,
+          user.driver_profiles.vehicle_type,
+        );
+
+        const filteredRequests = requests.filter(
+          req => !rejectedRequests.includes(req.id),
+        );
+
+        if (filteredRequests.length > 0) {
+          showNotification(filteredRequests[0]);
+          sound?.play();
+
+          const route = await calculateRoute(
+            {
+              latitude: filteredRequests[0].origin_lat,
+              longitude: filteredRequests[0].origin_lng,
+            },
+            {
+              latitude: filteredRequests[0].destination_lat,
+              longitude: filteredRequests[0].destination_lng,
+            },
           );
+          setCurrentRoute(route);
 
-          const filteredRequests = requests.filter(
-            req => !rejectedRequests.includes(req.id),
-          );
-
-          if (filteredRequests.length > 0) {
-            // Mostrar notificación y reproducir sonido
-            showNotification(filteredRequests[0]);
-            sound?.play();
-
-            // Calcular la ruta entre origen y destino de la solicitud
-            const route = await calculateRoute(
-              {
-                latitude: filteredRequests[0].origin_lat,
-                longitude: filteredRequests[0].origin_lng,
-              },
-              {
-                latitude: filteredRequests[0].destination_lat,
-                longitude: filteredRequests[0].destination_lng,
-              },
-            );
-            setCurrentRoute(route);
-
-            // Ajustar el mapa para mostrar la ruta completa
+          if (mapRef.current) {
             const coordinates = [
               {
                 latitude: filteredRequests[0].origin_lat,
@@ -307,46 +305,132 @@ const DriverHomeScreen: React.FC<{
               animated: true,
             });
           }
+        }
 
-          setPendingRequests(filteredRequests);
-        } catch (error) {
-          console.error('Error al obtener solicitudes:', error);
+        setPendingRequests(filteredRequests);
+      } catch (error) {
+        console.error('Error al obtener solicitudes:', error);
+      }
+    }
+  };
+
+  const sleep = (time: number) =>
+    new Promise(resolve => setTimeout(resolve, time));
+
+  const backgroundTask = async () => {
+    try {
+      await new Promise(async resolve => {
+        await BackgroundService.updateNotification({
+          taskDesc: 'Servicio activo',
+        });
+
+        while (BackgroundService.isRunning()) {
+          try {
+            if (isOnDuty) {
+              await fetchPendingRequests();
+
+              // Actualizar la notificación periódicamente
+              await BackgroundService.updateNotification({
+                taskDesc:
+                  'Última actualización: ' + new Date().toLocaleTimeString(),
+              });
+            }
+          } catch (error) {
+            console.error('Error in background task:', error);
+            // Continuar ejecutando incluso si hay error
+          }
+          await sleep(10000);
+        }
+      });
+    } catch (error) {
+      console.error('Background task error:', error);
+      // Intentar reiniciar el servicio si falla
+      startBackgroundService();
+    }
+  };
+
+  const startBackgroundService = async () => {
+    const options = {
+      taskName: 'CheckTrips',
+      taskTitle: 'Buscando viajes',
+      taskDesc: 'Iniciando servicio...',
+      taskIcon: {
+        name: 'ic_launcher',
+        type: 'mipmap',
+      },
+      color: '#0891b2',
+      parameters: {
+        delay: 10000,
+      },
+      // Opciones adicionales para mejorar la estabilidad
+      progressBar: {
+        max: 100,
+        indeterminate: true,
+      },
+      stopOnTerminate: false, // Continuar después de que la app se cierre
+      allowExecutionInForeground: true,
+    };
+
+    try {
+      if (await BackgroundService.isRunning()) {
+        await BackgroundService.stop();
+      }
+      await BackgroundService.start(backgroundTask, options);
+      console.log('Servicio en segundo plano iniciado');
+    } catch (error) {
+      console.error('Error starting background service:', error);
+      Alert.alert('Error', 'No se pudo iniciar el servicio en segundo plano');
+    }
+  };
+
+  const stopBackgroundService = async () => {
+    try {
+      if (await BackgroundService.isRunning()) {
+        await BackgroundService.stop();
+      }
+    } catch (error) {
+      console.error('Error stopping background service:', error);
+    }
+  };
+
+  // Modificar el efecto para ser más resiliente
+  useEffect(() => {
+    let isSubscribed = true;
+    let retryCount = 0;
+    const MAX_RETRIES = 3;
+
+    const handleBackgroundService = async () => {
+      try {
+        if (isOnDuty && position && isSubscribed) {
+          await startBackgroundService();
+        } else if (isSubscribed) {
+          await stopBackgroundService();
+        }
+      } catch (error) {
+        console.error('Error handling background service:', error);
+        // Reintentar si falla
+        if (retryCount < MAX_RETRIES) {
+          retryCount++;
+          setTimeout(handleBackgroundService, 1000 * retryCount);
         }
       }
     };
 
-    // Configurar AppState listener
-    const subscription = AppState.addEventListener(
-      'change',
-      (nextAppState: AppStateStatus) => {
-        if (isOnDuty) {
-          fetchPendingRequests();
-        }
-      },
-    );
+    handleBackgroundService();
 
-    if (isOnDuty && position) {
-      fetchPendingRequests();
-      const interval = setInterval(fetchPendingRequests, 10000);
-      return () => {
-        clearInterval(interval);
-        subscription.remove();
-      };
-    }
+    // Agregar un listener para cuando la app vuelve a primer plano
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      if (nextAppState === 'active' && isOnDuty) {
+        handleBackgroundService();
+      }
+    });
 
     return () => {
+      isSubscribed = false;
       subscription.remove();
+      stopBackgroundService();
     };
-  }, [
-    position,
-    isOnDuty,
-    user.id,
-    user.driver_profiles.vehicle_type,
-    rejectedRequests,
-    activeTrip,
-    pendingRequests,
-    sound,
-  ]);
+  }, [isOnDuty, position]);
 
   const handleRequestResponse = async (
     requestId: string,
@@ -360,9 +444,9 @@ const DriverHomeScreen: React.FC<{
         setRejectedRequests(prev => [...prev, requestId]);
         setPendingRequests([]);
       }
-      await tripRequestService.updateRequestStatus(requestId, status);
 
       if (status === 'accepted') {
+        await tripRequestService.updateRequestStatus(requestId, status);
         await tripRequestService.updateTripRequest(requestId, {
           driver_id: user.id,
           status: 'accepted',

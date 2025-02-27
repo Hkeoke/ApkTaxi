@@ -38,7 +38,9 @@ type RootStackParamList = {
   DriverTrips: undefined;
   DriverBalanceHistory: undefined;
   AdminDriverBalances: undefined;
-  AdminTabs: undefined;
+  AdminTabs: {
+    screen: string;
+  };
 };
 
 const Sidebar = ({isVisible, onClose, role}: SidebarProps) => {
