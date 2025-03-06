@@ -256,3 +256,141 @@ BEGIN
   WHERE id = driver_id;
 END;
 $$ LANGUAGE plpgsql;
+
+-- Tabla para almacenar las paradas de los viajes
+CREATE TABLE trip_stops (
+  id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
+  trip_request_id uuid REFERENCES trip_requests(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  latitude decimal NOT NULL,
+  longitude decimal NOT NULL,
+  order_index integer NOT NULL,
+  created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Crear índice para mejorar el rendimiento
+CREATE INDEX idx_trip_stops_trip_request ON trip_stops(trip_request_id);
+
+-- Primero eliminar el constraint existente si existe
+ALTER TABLE trip_requests 
+DROP CONSTRAINT IF EXISTS trip_requests_status_check;
+
+-- Actualizar registros existentes a un estado válido
+UPDATE trip_requests
+SET status = 'broadcasting'
+WHERE status NOT IN ('broadcasting', 'pending_acceptance', 'accepted', 'cancelled');
+
+-- Luego modificar la columna y agregar el nuevo constraint
+ALTER TABLE trip_requests 
+ALTER COLUMN status TYPE text;
+
+ALTER TABLE trip_requests
+ADD CONSTRAINT trip_requests_status_check 
+CHECK (status IN ('broadcasting', 'pending_acceptance', 'accepted', 'cancelled'));
+
+-- Solo mantener la columna del conductor que intenta aceptar
+ALTER TABLE trip_requests
+ADD COLUMN IF NOT EXISTS attempting_driver_id uuid REFERENCES driver_profiles(id);
+
+-- Función para intentar aceptar un viaje
+CREATE OR REPLACE FUNCTION attempt_accept_trip_request(
+  p_request_id uuid,
+  p_driver_id uuid
+) RETURNS boolean AS $$
+DECLARE
+  v_request trip_requests;
+BEGIN
+  -- Obtener la solicitud con bloqueo exclusivo
+  SELECT * INTO v_request
+  FROM trip_requests
+  WHERE id = p_request_id
+  FOR UPDATE SKIP LOCKED;
+
+  -- Validar estado actual
+  IF v_request.status != 'broadcasting' THEN
+    RETURN false;
+  END IF;
+
+  -- Actualizar estado y conductor que intenta aceptar
+  UPDATE trip_requests
+  SET 
+    status = 'pending_acceptance',
+    attempting_driver_id = p_driver_id
+  WHERE id = p_request_id;
+
+  RETURN true;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Función para confirmar la aceptación
+CREATE OR REPLACE FUNCTION confirm_trip_request_acceptance(
+  p_request_id uuid,
+  p_driver_id uuid
+) RETURNS trips AS $$
+DECLARE
+  v_request trip_requests;
+  v_new_trip trips;
+BEGIN
+  -- Obtener la solicitud con bloqueo
+  SELECT * INTO v_request
+  FROM trip_requests
+  WHERE id = p_request_id
+  FOR UPDATE;
+
+  -- Validar estado y conductor
+  IF v_request.status != 'pending_acceptance' 
+     OR v_request.attempting_driver_id != p_driver_id THEN
+    RAISE EXCEPTION 'Solicitud no válida para confirmación';
+  END IF;
+
+  -- Convertir a viaje
+  INSERT INTO trips (
+    driver_id,
+    created_by,
+    origin,
+    destination,
+    origin_lat,
+    origin_lng,
+    destination_lat,
+    destination_lng,
+    price,
+    status,
+    passenger_phone
+  )
+  VALUES (
+    p_driver_id,
+    v_request.created_by,
+    v_request.origin,
+    v_request.destination,
+    v_request.origin_lat,
+    v_request.origin_lng,
+    v_request.destination_lat,
+    v_request.destination_lng,
+    v_request.price,
+    'in_progress',
+    v_request.passenger_phone
+  )
+  RETURNING * INTO v_new_trip;
+
+  -- Actualizar estado de la solicitud
+  UPDATE trip_requests 
+  SET status = 'accepted'
+  WHERE id = p_request_id;
+
+  RETURN v_new_trip;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Función para liberar una solicitud si algo falla
+CREATE OR REPLACE FUNCTION release_trip_request(
+  p_request_id uuid
+) RETURNS void AS $$
+BEGIN
+  UPDATE trip_requests
+  SET 
+    status = 'broadcasting',
+    attempting_driver_id = NULL
+  WHERE id = p_request_id
+  AND status = 'pending_acceptance';
+END;
+$$ LANGUAGE plpgsql;

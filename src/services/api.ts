@@ -9,23 +9,57 @@ import {
   BalanceOperationType,
 } from '../utils/db_types';
 
+// Agregar al inicio del archivo junto con las otras interfaces
+interface Stop {
+  name: string;
+  latitude: number;
+  longitude: number;
+  order_index?: number;
+}
+
 // En tripService
 export const tripRequestService = {
   async createBroadcastRequest(requestData: any) {
-    const {operator_id, ...rest} = requestData;
-    const {data, error} = await supabase
-      .from('trip_requests')
-      .insert([
-        {
-          ...rest,
-          created_by: operator_id,
-          status: 'broadcasting',
-        },
-      ])
-      .select();
+    const {operator_id, stops, ...rest} = requestData;
 
-    if (error) throw error;
-    return data;
+    try {
+      // Primero crear la solicitud de viaje
+      const {data: tripRequest, error: tripError} = await supabase
+        .from('trip_requests')
+        .insert([
+          {
+            ...rest,
+            created_by: operator_id,
+            status: 'broadcasting',
+          },
+        ])
+        .select()
+        .single();
+
+      if (tripError) throw tripError;
+
+      // Si hay paradas, las insertamos
+      if (stops && stops.length > 0) {
+        const stopsToInsert = stops.map((stop: Stop, index: number) => ({
+          trip_request_id: tripRequest.id,
+          name: stop.name,
+          latitude: stop.latitude,
+          longitude: stop.longitude,
+          order_index: index,
+        }));
+
+        const {error: stopsError} = await supabase
+          .from('trip_stops')
+          .insert(stopsToInsert);
+
+        if (stopsError) throw stopsError;
+      }
+
+      return tripRequest;
+    } catch (error) {
+      console.error('Error en createBroadcastRequest:', error);
+      throw error;
+    }
   },
 
   // Modificar el método para obtener solicitudes pendientes
@@ -55,7 +89,14 @@ export const tripRequestService = {
           `
           *,
           created_by,
-          created_at
+          created_at,
+          trip_stops (
+            id,
+            name,
+            latitude,
+            longitude,
+            order_index
+          )
         `,
         )
         .eq('status', 'broadcasting')
@@ -232,6 +273,53 @@ export const tripRequestService = {
     } catch (error) {
       console.error('Error updating trip request:', error);
       throw error;
+    }
+  },
+
+  async attemptAcceptRequest(requestId: string, driverId: string) {
+    try {
+      const {data, error} = await supabase.rpc('attempt_accept_trip_request', {
+        p_request_id: requestId,
+        p_driver_id: driverId,
+      });
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error attempting to accept request:', error);
+      throw error;
+    }
+  },
+
+  async confirmRequestAcceptance(requestId: string, driverId: string) {
+    try {
+      const {data, error} = await supabase.rpc(
+        'confirm_trip_request_acceptance',
+        {
+          p_request_id: requestId,
+          p_driver_id: driverId,
+        },
+      );
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      // Si falla la confirmación, intentamos liberar la solicitud
+      await this.releaseRequest(requestId);
+      console.error('Error confirming request acceptance:', error);
+      throw error;
+    }
+  },
+
+  async releaseRequest(requestId: string) {
+    try {
+      const {error} = await supabase.rpc('release_trip_request', {
+        p_request_id: requestId,
+      });
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error releasing request:', error);
     }
   },
 };
@@ -504,30 +592,28 @@ export const driverService = {
     }
   },
 
-  async updateDriverStatus(driverId: string, isActive: boolean) {
-    // Solo actualizamos el estado del usuario (active)
-    const {data, error: userError} = await supabase
-      .from('users')
-      .update({active: isActive})
+  async updateDriverStatus(driverId: string, isOnDuty: boolean) {
+    // Actualizamos is_on_duty en driver_profiles
+    const {data, error: driverError} = await supabase
+      .from('driver_profiles')
+      .update({is_on_duty: isOnDuty})
       .eq('id', driverId)
       .select(
         `
-        *,
-        driver_profiles (
-          id,
-          first_name,
-          last_name,
-          phone_number,
-          vehicle,
-          vehicle_type,
-          is_on_duty,
-          balance
-        )
+        id,
+        first_name,
+        last_name,
+        phone_number,
+        vehicle,
+        vehicle_type,
+        is_on_duty,
+        balance,
+        users!inner (*)
       `,
       )
       .single();
 
-    if (userError) throw userError;
+    if (driverError) throw driverError;
     return data;
   },
 

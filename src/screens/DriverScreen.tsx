@@ -43,6 +43,14 @@ import notifee, {AndroidImportance} from '@notifee/react-native';
 import Sound from 'react-native-sound';
 import BackgroundService from 'react-native-background-actions';
 
+interface Stop {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  order_index: number;
+}
+
 interface TripRequest {
   id: string;
   origin: string;
@@ -57,6 +65,7 @@ interface TripRequest {
   status: string;
   created_by: string;
   observations?: string;
+  trip_stops?: Stop[];
 }
 
 interface Trip {
@@ -91,6 +100,12 @@ interface Position {
   longitudeDelta: number;
 }
 
+interface Step {
+  geometry: {
+    coordinates: [number, number][];
+  };
+}
+
 const DriverHomeScreen: React.FC<{
   user: {
     id: string;
@@ -119,42 +134,67 @@ const DriverHomeScreen: React.FC<{
   const calculateRoute = async (
     start: {latitude: number; longitude: number},
     end: {latitude: number; longitude: number},
+    stops: Stop[] = [],
   ): Promise<Route> => {
     try {
-      // Agregamos parámetros para mayor precisión:
-      // steps=true: incluye información detallada de cada paso
-      // geometries=geojson: formato más preciso para coordenadas
-      // overview=full: obtiene todos los puntos de la ruta sin simplificar
-      const response = await fetch(
-        `https://router.project-osrm.org/route/v1/driving/${start.longitude},${start.latitude};${end.longitude},${end.latitude}?steps=true&geometries=geojson&overview=full`,
+      // Ordenar las paradas por order_index
+      const sortedStops = [...stops].sort(
+        (a, b) => a.order_index - b.order_index,
       );
 
-      const data = await response.json();
+      // Crear array con todos los puntos en orden: origen -> paradas -> destino
+      const points = [
+        start,
+        ...sortedStops.map(stop => ({
+          latitude: stop.latitude,
+          longitude: stop.longitude,
+        })),
+        end,
+      ];
 
-      if (data.code === 'Ok' && data.routes.length > 0) {
-        const route = data.routes[0];
+      // Obtener rutas entre cada par de puntos consecutivos
+      const routeSegments = [];
+      for (let i = 0; i < points.length - 1; i++) {
+        const response = await fetch(
+          `https://router.project-osrm.org/route/v1/driving/${
+            points[i].longitude
+          },${points[i].latitude};${points[i + 1].longitude},${
+            points[i + 1].latitude
+          }?steps=true&geometries=geojson&overview=full`,
+        );
 
-        // Extraer todos los puntos de los pasos para mayor precisión
-        let allPoints: Array<{latitude: number; longitude: number}> = [];
-
-        // Obtener puntos detallados de cada paso
-        route.legs[0].steps.forEach((step: any) => {
-          const points = step.geometry.coordinates.map(
-            (coord: [number, number]) => ({
-              latitude: coord[1],
-              longitude: coord[0],
-            }),
-          );
-          allPoints = [...allPoints, ...points];
-        });
-
-        return {
-          distance: (route.distance / 1000).toFixed(1) + ' km',
-          duration: Math.round(route.duration / 60) + ' min',
-          polyline: allPoints,
-        };
+        const data = await response.json();
+        if (data.code === 'Ok' && data.routes.length > 0) {
+          const route = data.routes[0];
+          routeSegments.push({
+            distance: route.distance,
+            duration: route.duration,
+            geometry: route.legs[0].steps.flatMap((step: Step) =>
+              step.geometry.coordinates.map(coord => ({
+                latitude: coord[1],
+                longitude: coord[0],
+              })),
+            ),
+          });
+        }
       }
-      throw new Error('No se pudo calcular la ruta');
+
+      // Combinar todos los segmentos
+      const totalDistance = routeSegments.reduce(
+        (sum, segment) => sum + segment.distance,
+        0,
+      );
+      const totalDuration = routeSegments.reduce(
+        (sum, segment) => sum + segment.duration,
+        0,
+      );
+      const allPoints = routeSegments.flatMap(segment => segment.geometry);
+
+      return {
+        distance: (totalDistance / 1000).toFixed(1) + ' km',
+        duration: Math.round(totalDuration / 60) + ' min',
+        polyline: allPoints,
+      };
     } catch (error) {
       console.error('Error calculating route:', error);
       return {
@@ -284,6 +324,7 @@ const DriverHomeScreen: React.FC<{
               latitude: filteredRequests[0].destination_lat,
               longitude: filteredRequests[0].destination_lng,
             },
+            filteredRequests[0].trip_stops || [],
           );
           setCurrentRoute(route);
 
@@ -362,12 +403,12 @@ const DriverHomeScreen: React.FC<{
       parameters: {
         delay: 10000,
       },
-      // Opciones adicionales para mejorar la estabilidad
       progressBar: {
         max: 100,
+        value: 0,
         indeterminate: true,
       },
-      stopOnTerminate: false, // Continuar después de que la app se cierre
+      stopOnTerminate: false,
       allowExecutionInForeground: true,
     };
 
@@ -437,98 +478,87 @@ const DriverHomeScreen: React.FC<{
     status: 'accepted' | 'rejected',
   ) => {
     try {
-      // Detener sonido y notificación
       await stopAlerts();
 
       if (status === 'rejected') {
         setRejectedRequests(prev => [...prev, requestId]);
         setPendingRequests([]);
+        return;
       }
 
       if (status === 'accepted') {
-        await tripRequestService.updateRequestStatus(requestId, status);
-        await tripRequestService.updateTripRequest(requestId, {
-          driver_id: user.id,
-          status: 'accepted',
-        });
-        const tripDetails = (await tripRequestService.convertRequestToTrip(
+        // Intentar aceptar la solicitud
+        const success = await tripRequestService.attemptAcceptRequest(
           requestId,
-        )) as Trip;
+          user.id,
+        );
 
-        if (!tripDetails) {
-          throw new Error('Invalid trip details received');
+        if (!success) {
+          Alert.alert('Error', 'Esta solicitud ya no está disponible');
+          setPendingRequests(prev => prev.filter(req => req.id !== requestId));
+          return;
         }
 
-        setActiveTrip(tripDetails);
-        setTripPhase('toPickup');
-
-        if (position) {
-          // Calcular ruta desde la posición actual del conductor hasta el punto de recogida
-          const route = await calculateRoute(
-            {
-              latitude: position.latitude,
-              longitude: position.longitude,
-            },
-            {
-              latitude: tripDetails.origin_lat,
-              longitude: tripDetails.origin_lng,
-            },
+        try {
+          // Confirmar la aceptación
+          const tripDetails = await tripRequestService.confirmRequestAcceptance(
+            requestId,
+            user.id,
           );
 
-          setCurrentRoute(route);
+          setActiveTrip(tripDetails);
+          setTripPhase('toPickup');
 
-          // Ajustar el mapa para mostrar la ruta al punto de recogida
-          const coordinates = [
-            {
-              latitude: position.latitude,
-              longitude: position.longitude,
-            },
-            ...route.polyline,
-            {
-              latitude: tripDetails.origin_lat,
-              longitude: tripDetails.origin_lng,
-            },
-          ];
-
-          // Configurar la vista del mapa en modo navegación
-          mapRef.current?.animateToRegion({
-            latitude: position.latitude,
-            longitude: position.longitude,
-            latitudeDelta: 0.005, // Zoom más cercano para navegación
-            longitudeDelta: 0.005,
-          });
-
-          // Rotar el mapa en la dirección del siguiente punto de la ruta
-          if (route.polyline.length > 1) {
-            const nextPoint = route.polyline[1];
-            const bearing = calculateBearing(
-              position.latitude,
-              position.longitude,
-              nextPoint.latitude,
-              nextPoint.longitude,
+          if (position) {
+            // Calcular ruta incluyendo las paradas
+            const currentRequest = pendingRequests.find(
+              req => req.id === requestId,
             );
-            mapRef.current?.animateCamera({
-              center: {
+            const route = await calculateRoute(
+              {
                 latitude: position.latitude,
                 longitude: position.longitude,
               },
-              pitch: 45, // Inclinar la vista para mejor visualización
-              heading: bearing, // Rotar hacia la dirección de la ruta
-              zoom: 18, // Zoom cercano para navegación
+              {
+                latitude: tripDetails.origin_lat,
+                longitude: tripDetails.origin_lng,
+              },
+              currentRequest?.trip_stops || [],
+            );
+
+            setCurrentRoute(route);
+
+            // Ajustar el mapa para mostrar toda la ruta
+            const allPoints = [
+              {
+                latitude: position.latitude,
+                longitude: position.longitude,
+              },
+              ...route.polyline,
+              {
+                latitude: tripDetails.origin_lat,
+                longitude: tripDetails.origin_lng,
+              },
+            ];
+
+            mapRef.current?.fitToCoordinates(allPoints, {
+              edgePadding: {top: 50, right: 50, bottom: 50, left: 50},
+              animated: true,
             });
           }
-        }
 
-        Alert.alert('Éxito', 'Viaje aceptado');
+          Alert.alert('Éxito', 'Viaje aceptado');
+        } catch (error) {
+          Alert.alert('Error', 'No se pudo confirmar la solicitud');
+          setPendingRequests(prev => prev.filter(req => req.id !== requestId));
+          return;
+        }
       }
 
       setPendingRequests(prev => prev.filter(req => req.id !== requestId));
     } catch (error) {
       console.error('Error handling request:', error);
-      Alert.alert(
-        'Error',
-        'No se pudo procesar la solicitud. Por favor, intente nuevamente.',
-      );
+      Alert.alert('Error', 'No se pudo procesar la solicitud');
     }
   };
 
@@ -557,9 +587,39 @@ const DriverHomeScreen: React.FC<{
     return bearing;
   };
 
+  // Función para verificar si está dentro del radio permitido (comentada temporalmente)
+  /*const isWithinAllowedDistance = (
+    currentLat: number,
+    currentLon: number,
+    targetLat: number,
+    targetLon: number,
+    maxDistance: number = 100,
+  ): boolean => {
+    const distance = calculateDistance(currentLat, currentLon, targetLat, targetLon);
+    return distance <= maxDistance;
+  };*/
+
+  // Modificar el manejador de llegada al punto de recogida
   const handleArrivalAtPickup = async () => {
     try {
-      if (!activeTrip?.id) return;
+      if (!activeTrip?.id || !position) return;
+
+      // Verificación de distancia comentada temporalmente
+      /*const isNearPickup = isWithinAllowedDistance(
+        position.latitude,
+        position.longitude,
+        activeTrip.origin_lat,
+        activeTrip.origin_lng,
+      );
+
+      if (!isNearPickup) {
+        Alert.alert(
+          'Ubicación incorrecta',
+          'Debes estar a menos de 100 metros del punto de recogida para marcar tu llegada.',
+        );
+        return;
+      }*/
+
       await tripRequestService.updateTripStatus(
         activeTrip.id,
         'pickup_reached',
@@ -576,11 +636,9 @@ const DriverHomeScreen: React.FC<{
         longitude: activeTrip?.destination_lng,
       };
 
-      // Calcular ruta al destino usando OSRM
       const route = await calculateRoute(startLocation, endLocation);
       setCurrentRoute(route);
 
-      // Incluir todos los puntos de la ruta para un mejor ajuste del mapa
       const coordinates = [startLocation, ...route.polyline, endLocation];
 
       mapRef.current?.fitToCoordinates(coordinates, {
@@ -592,15 +650,33 @@ const DriverHomeScreen: React.FC<{
       Alert.alert('Error', 'No se pudo actualizar el estado del viaje');
     }
   };
+
+  // Modificar el manejador de finalización del viaje
   const handleTripCompletion = async () => {
     try {
-      if (!activeTrip?.id) return;
+      if (!activeTrip?.id || !position) return;
 
-      // Calcular el descuento (10% del precio del viaje)
+      // Verificación de distancia comentada temporalmente
+      /*const isNearDestination = isWithinAllowedDistance(
+        position.latitude,
+        position.longitude,
+        activeTrip.destination_lat,
+        activeTrip.destination_lng,
+      );
+
+      if (!isNearDestination) {
+        Alert.alert(
+          'Ubicación incorrecta',
+          'Debes estar a menos de 100 metros del punto de destino para finalizar el viaje.',
+        );
+        return;
+      }*/
+
+      await tripRequestService.updateTripStatus(activeTrip.id, 'completed');
       const commission = activeTrip.price * 0.1;
 
-      // Primero aplicamos el descuento al balance
-      await driverService.updateDriverBalance(
+      // Aplicamos el descuento al balance
+      const updatedProfile = await driverService.updateDriverBalance(
         user.id,
         commission,
         'descuento',
@@ -608,8 +684,30 @@ const DriverHomeScreen: React.FC<{
         user.id,
       );
 
-      // Luego completamos el viaje
-      await tripRequestService.updateTripStatus(activeTrip.id, 'completed');
+      // Verificar si el balance quedó negativo
+      if (updatedProfile.balance < 0) {
+        // Desactivar conductor (is_on_duty = false) y desactivar usuario (active = false)
+        await driverService.updateDriverStatus(user.id, false);
+        await driverService.deleteDriver(user.id); // Esta función actualiza active = false
+        setIsOnDuty(false);
+
+        Alert.alert(
+          'Cuenta Suspendida',
+          'Tu cuenta ha sido suspendida por balance negativo. Por favor, contacta al administrador para reactivar tu cuenta.',
+          [
+            {
+              text: 'Entendido',
+              onPress: () => {
+                // Cerrar sesión del usuario
+                /* navigation.reset({
+                  index: 0,
+                  routes: [{name: 'Login'}],
+                });*/
+              },
+            },
+          ],
+        );
+      }
 
       // Resetear estados
       setActiveTrip(null);
@@ -622,13 +720,18 @@ const DriverHomeScreen: React.FC<{
         'Viaje Completado',
         `Viaje completado exitosamente.\nSe ha descontado una comisión de $${commission.toFixed(
           2,
-        )}`,
+        )}${
+          updatedProfile.balance < 0
+            ? '\n\nTu cuenta ha sido suspendida por balance negativo.'
+            : ''
+        }`,
       );
     } catch (error) {
       console.error('Error completing trip:', error);
       Alert.alert('Error', 'No se pudo completar el viaje');
     }
   };
+
   useEffect(() => {
     requestLocationPermission();
     loadInitialDriverStatus();
@@ -865,7 +968,7 @@ const DriverHomeScreen: React.FC<{
         ref={mapRef}
         style={styles.map}
         provider={PROVIDER_DEFAULT}
-        customMapStyle={mapStyle}
+        //customMapStyle={mapStyle}
         region={position as Region}
         showsUserLocation={false}
         followsUserLocation={true}
@@ -904,17 +1007,34 @@ const DriverHomeScreen: React.FC<{
                       ]}>
                       <View style={styles.markerIconContainer}>
                         <MapPinIcon size={16} color="#3B82F6" />
-                        <View
-                          style={[
-                            styles.markerPin,
-                            {backgroundColor: '#3B82F6'},
-                          ]}
-                        />
-                        <View style={styles.markerPinShadow} />
                       </View>
                     </View>
                   </View>
                 </Marker>
+
+                {/* Renderizar marcadores para las paradas */}
+                {pendingRequests[0].trip_stops?.map((stop, index) => (
+                  <Marker
+                    key={stop.id}
+                    coordinate={{
+                      latitude: stop.latitude,
+                      longitude: stop.longitude,
+                    }}
+                    title={`Parada ${index + 1}`}>
+                    <View style={styles.markerWrapper}>
+                      <View
+                        style={[
+                          styles.markerContainer,
+                          {borderColor: '#8B5CF6'},
+                        ]}>
+                        <View style={styles.markerIconContainer}>
+                          <Text style={styles.stopNumber}>{index + 1}</Text>
+                        </View>
+                      </View>
+                    </View>
+                  </Marker>
+                ))}
+
                 <Marker
                   coordinate={{
                     latitude: pendingRequests[0].destination_lat,
@@ -929,13 +1049,6 @@ const DriverHomeScreen: React.FC<{
                       ]}>
                       <View style={styles.markerIconContainer}>
                         <FlagIcon size={16} color="#22C55E" />
-                        <View
-                          style={[
-                            styles.markerPin,
-                            {backgroundColor: '#22C55E'},
-                          ]}
-                        />
-                        <View style={styles.markerPinShadow} />
                       </View>
                     </View>
                   </View>
@@ -958,13 +1071,6 @@ const DriverHomeScreen: React.FC<{
                       ]}>
                       <View style={styles.markerIconContainer}>
                         <MapPinIcon size={16} color="#3B82F6" />
-                        <View
-                          style={[
-                            styles.markerPin,
-                            {backgroundColor: '#3B82F6'},
-                          ]}
-                        />
-                        <View style={styles.markerPinShadow} />
                       </View>
                     </View>
                   </View>
@@ -984,13 +1090,6 @@ const DriverHomeScreen: React.FC<{
                         ]}>
                         <View style={styles.markerIconContainer}>
                           <FlagIcon size={16} color="#22C55E" />
-                          <View
-                            style={[
-                              styles.markerPin,
-                              {backgroundColor: '#22C55E'},
-                            ]}
-                          />
-                          <View style={styles.markerPinShadow} />
                         </View>
                       </View>
                     </View>
@@ -1425,6 +1524,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#22C55E',
+  },
+  stopNumber: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#8B5CF6',
   },
 });
 

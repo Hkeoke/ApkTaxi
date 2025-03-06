@@ -11,6 +11,7 @@ import {
   Animated, // Add this
   ActivityIndicator, // Also add this since it's used in the code
   FlatList,
+  ScrollView,
 } from 'react-native';
 import MapView, {Marker, Circle, PROVIDER_DEFAULT} from 'react-native-maps';
 import {X, Car, Bike, Menu, Plus} from 'lucide-react-native';
@@ -56,6 +57,15 @@ interface OperatorScreenProps {
   mode?: 'normal' | 'view_drivers';
 }
 
+interface Stop {
+  name: string;
+  latitude: number;
+  longitude: number;
+}
+
+// Asegurarse de que el tipo de searchMode incluya 'stop'
+type SearchMode = 'origin' | 'destination' | 'stop';
+
 const OperatorHomeScreen: React.FC<OperatorScreenProps> = ({
   user,
   role = 'operador',
@@ -68,9 +78,7 @@ const OperatorHomeScreen: React.FC<OperatorScreenProps> = ({
   const slideAnim = useRef(new Animated.Value(-300)).current;
   const mapRef = useRef<MapView | null>(null);
   const [showLocationModal, setShowLocationModal] = useState(false);
-  const [searchMode, setSearchMode] = useState<'origin' | 'destination' | null>(
-    null,
-  );
+  const [searchMode, setSearchMode] = useState<SearchMode | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(
     null,
   );
@@ -97,6 +105,7 @@ const OperatorHomeScreen: React.FC<OperatorScreenProps> = ({
     observations: '',
     vehicle_type: '4_ruedas' as '2_ruedas' | '4_ruedas',
     passenger_phone: '',
+    stops: [] as Stop[],
   });
 
   // Agregar función para obtener dirección desde coordenadas
@@ -121,8 +130,6 @@ const OperatorHomeScreen: React.FC<OperatorScreenProps> = ({
   // Modificar handleMapPress para incluir la búsqueda de dirección
   const handleMapPress = async (event: any) => {
     const {coordinate} = event.nativeEvent;
-
-    // Mostrar un indicador de carga si lo deseas
     setLoading(true);
 
     try {
@@ -131,12 +138,15 @@ const OperatorHomeScreen: React.FC<OperatorScreenProps> = ({
         coordinate.longitude,
       );
 
-      setSelectedLocation({
+      const newLocation = {
         name: address,
         latitude: coordinate.latitude,
         longitude: coordinate.longitude,
-      });
+      };
 
+      setSelectedLocation(newLocation);
+
+      // Actualizar el mapa
       mapRef.current?.animateToRegion(
         {
           ...coordinate,
@@ -147,7 +157,6 @@ const OperatorHomeScreen: React.FC<OperatorScreenProps> = ({
       );
     } catch (error) {
       console.error('Error en handleMapPress:', error);
-      // En caso de error, usar las coordenadas como respaldo
       setSelectedLocation({
         name: `${coordinate.latitude.toFixed(
           6,
@@ -259,23 +268,48 @@ const OperatorHomeScreen: React.FC<OperatorScreenProps> = ({
   };
 
   const handleOSMSelect = (item: OSMResult) => {
+    if (!item) return;
+
     const location: Location = {
       name: item.display_name,
       latitude: parseFloat(item.lat),
       longitude: parseFloat(item.lon),
     };
 
-    if (searchMode === 'origin') {
-      setRequestForm(prev => ({...prev, origin: location.name}));
-      setOriginCoords(location);
-    } else {
-      setRequestForm(prev => ({...prev, destination: location.name}));
-      setDestinationCoords(location);
+    switch (searchMode) {
+      case 'origin':
+        setRequestForm(prev => ({...prev, origin: location.name}));
+        setOriginCoords(location);
+        break;
+      case 'destination':
+        setRequestForm(prev => ({...prev, destination: location.name}));
+        setDestinationCoords(location);
+        break;
+      case 'stop':
+        setRequestForm(prev => ({
+          ...prev,
+          stops: [...prev.stops, location],
+        }));
+        break;
     }
 
     setShowLocationModal(false);
     setSearchResults([]);
     setSearchQuery('');
+    setSearchMode(null);
+  };
+
+  // Agregar función para eliminar paradas
+  const handleRemoveStop = (index: number) => {
+    setRequestForm(prev => ({
+      ...prev,
+      stops: prev.stops.filter((_, i) => i !== index),
+    }));
+  };
+
+  const handleAddStop = () => {
+    setSearchMode('stop'); // Asegurarse de que esto se establece correctamente
+    setShowLocationModal(true);
   };
 
   // Componente de búsqueda
@@ -310,6 +344,33 @@ const OperatorHomeScreen: React.FC<OperatorScreenProps> = ({
     </View>
   );
 
+  const renderStopsList = () => (
+    <View style={styles.stopsContainer}>
+      <Text style={styles.stopsTitle}>Paradas</Text>
+      <TouchableOpacity
+        style={styles.addStopButton}
+        onPress={() => {
+          setSearchMode('stop');
+          setShowLocationModal(true);
+        }}>
+        <Plus size={20} color="#0891b2" />
+        <Text style={styles.addStopText}>Agregar parada</Text>
+      </TouchableOpacity>
+      {requestForm.stops.map((stop, index) => (
+        <View key={index} style={styles.stopItem}>
+          <Text style={styles.stopText} numberOfLines={1}>
+            {stop.name}
+          </Text>
+          <TouchableOpacity
+            style={styles.removeStopButton}
+            onPress={() => handleRemoveStop(index)}>
+            <X size={20} color="#FF4444" />
+          </TouchableOpacity>
+        </View>
+      ))}
+    </View>
+  );
+
   const handleSendRequest = async () => {
     try {
       if (!originCoords || !destinationCoords || !requestForm.price) {
@@ -334,6 +395,7 @@ const OperatorHomeScreen: React.FC<OperatorScreenProps> = ({
         vehicle_type: requestForm.vehicle_type,
         passenger_phone: requestForm.passenger_phone,
         status: 'broadcasting',
+        stops: requestForm.stops,
       };
 
       console.log('Enviando solicitud:', requestData);
@@ -348,6 +410,7 @@ const OperatorHomeScreen: React.FC<OperatorScreenProps> = ({
         observations: '',
         vehicle_type: '4_ruedas',
         passenger_phone: '',
+        stops: [],
       });
       setOriginCoords(null);
       setDestinationCoords(null);
@@ -456,16 +519,26 @@ const OperatorHomeScreen: React.FC<OperatorScreenProps> = ({
         longitude: selectedLocation.longitude,
       };
 
-      if (searchMode === 'origin') {
-        setRequestForm(prev => ({...prev, origin: locationData.name}));
-        setOriginCoords(locationData);
-      } else {
-        setRequestForm(prev => ({...prev, destination: locationData.name}));
-        setDestinationCoords(locationData);
+      switch (searchMode) {
+        case 'origin':
+          setRequestForm(prev => ({...prev, origin: locationData.name}));
+          setOriginCoords(locationData);
+          break;
+        case 'destination':
+          setRequestForm(prev => ({...prev, destination: locationData.name}));
+          setDestinationCoords(locationData);
+          break;
+        case 'stop':
+          setRequestForm(prev => ({
+            ...prev,
+            stops: [...prev.stops, locationData],
+          }));
+          break;
       }
 
       setShowLocationModal(false);
       setSelectedLocation(null);
+      setSearchMode(null);
     } catch (error) {
       console.error('Error:', error);
       Alert.alert('Error', 'Ocurrió un error al guardar la ubicación');
@@ -584,127 +657,136 @@ const OperatorHomeScreen: React.FC<OperatorScreenProps> = ({
             onPress={() => setShowRequestForm(false)}
           />
 
-          <View style={styles.formContainer}>
-            <TouchableOpacity
-              style={styles.input}
-              onPress={() => {
-                setSearchMode('origin');
-                setShowLocationModal(true);
-              }}>
-              <Text
-                style={[
-                  styles.inputText,
-                  !requestForm.origin && styles.placeholder,
-                ]}>
-                {requestForm.origin || 'Seleccionar origen'}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.input}
-              onPress={() => {
-                setSearchMode('destination');
-                setShowLocationModal(true);
-              }}>
-              <Text
-                style={[
-                  styles.inputText,
-                  !requestForm.destination && styles.placeholder,
-                ]}>
-                {requestForm.destination || 'Seleccionar destino'}
-              </Text>
-            </TouchableOpacity>
-
-            <View style={styles.vehicleTypeContainer}>
-              <Text style={styles.label}>Tipo de vehículo:</Text>
-              <View style={styles.radioGroup}>
+          <View style={styles.formWrapper}>
+            <ScrollView
+              style={styles.formScrollView}
+              contentContainerStyle={styles.formScrollContent}
+              showsVerticalScrollIndicator={false}>
+              <View style={styles.formContainer}>
                 <TouchableOpacity
-                  style={[
-                    styles.radioButton,
-                    requestForm.vehicle_type === '4_ruedas' &&
-                      styles.radioButtonSelected,
-                  ]}
-                  onPress={() =>
-                    setRequestForm(prev => ({
-                      ...prev,
-                      vehicle_type: '4_ruedas',
-                    }))
-                  }>
-                  <Car
-                    size={20}
-                    color={
-                      requestForm.vehicle_type === '4_ruedas'
-                        ? '#0891b2'
-                        : '#666'
-                    }
-                  />
-                  <Text style={styles.radioText}>4 ruedas</Text>
+                  style={styles.input}
+                  onPress={() => {
+                    setSearchMode('origin');
+                    setShowLocationModal(true);
+                  }}>
+                  <Text
+                    style={[
+                      styles.inputText,
+                      !requestForm.origin && styles.placeholder,
+                    ]}>
+                    {requestForm.origin || 'Seleccionar origen'}
+                  </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[
-                    styles.radioButton,
-                    requestForm.vehicle_type === '2_ruedas' &&
-                      styles.radioButtonSelected,
-                  ]}
-                  onPress={() =>
-                    setRequestForm(prev => ({
-                      ...prev,
-                      vehicle_type: '2_ruedas',
-                    }))
-                  }>
-                  <Bike
-                    size={20}
-                    color={
-                      requestForm.vehicle_type === '2_ruedas'
-                        ? '#0891b2'
-                        : '#666'
-                    }
-                  />
-                  <Text style={styles.radioText}>2 ruedas</Text>
+                  style={styles.input}
+                  onPress={() => {
+                    setSearchMode('destination');
+                    setShowLocationModal(true);
+                  }}>
+                  <Text
+                    style={[
+                      styles.inputText,
+                      !requestForm.destination && styles.placeholder,
+                    ]}>
+                    {requestForm.destination || 'Seleccionar destino'}
+                  </Text>
+                </TouchableOpacity>
+
+                <View style={styles.vehicleTypeContainer}>
+                  <Text style={styles.label}>Tipo de vehículo:</Text>
+                  <View style={styles.radioGroup}>
+                    <TouchableOpacity
+                      style={[
+                        styles.radioButton,
+                        requestForm.vehicle_type === '4_ruedas' &&
+                          styles.radioButtonSelected,
+                      ]}
+                      onPress={() =>
+                        setRequestForm(prev => ({
+                          ...prev,
+                          vehicle_type: '4_ruedas',
+                        }))
+                      }>
+                      <Car
+                        size={20}
+                        color={
+                          requestForm.vehicle_type === '4_ruedas'
+                            ? '#0891b2'
+                            : '#666'
+                        }
+                      />
+                      <Text style={styles.radioText}>4 ruedas</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.radioButton,
+                        requestForm.vehicle_type === '2_ruedas' &&
+                          styles.radioButtonSelected,
+                      ]}
+                      onPress={() =>
+                        setRequestForm(prev => ({
+                          ...prev,
+                          vehicle_type: '2_ruedas',
+                        }))
+                      }>
+                      <Bike
+                        size={20}
+                        color={
+                          requestForm.vehicle_type === '2_ruedas'
+                            ? '#0891b2'
+                            : '#666'
+                        }
+                      />
+                      <Text style={styles.radioText}>2 ruedas</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="Precio"
+                  placeholderTextColor="#999"
+                  value={requestForm.price}
+                  keyboardType="numeric"
+                  onChangeText={text =>
+                    setRequestForm(prev => ({...prev, price: text}))
+                  }
+                />
+
+                <TextInput
+                  style={[styles.input, styles.observationsInput]}
+                  placeholder="Observaciones (opcional)"
+                  placeholderTextColor="#999"
+                  value={requestForm.observations}
+                  multiline={true}
+                  numberOfLines={3}
+                  onChangeText={text =>
+                    setRequestForm(prev => ({...prev, observations: text}))
+                  }
+                />
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="Teléfono del cliente"
+                  placeholderTextColor="#999"
+                  value={requestForm.passenger_phone}
+                  keyboardType="phone-pad"
+                  onChangeText={text =>
+                    setRequestForm(prev => ({...prev, passenger_phone: text}))
+                  }
+                />
+
+                {renderStopsList()}
+
+                <TouchableOpacity
+                  style={styles.requestButton}
+                  onPress={handleSendRequest}>
+                  <Text style={styles.requestButtonText}>Enviar Solicitud</Text>
                 </TouchableOpacity>
               </View>
-            </View>
-
-            <TextInput
-              style={styles.input}
-              placeholder="Precio"
-              placeholderTextColor="#999"
-              value={requestForm.price}
-              keyboardType="numeric"
-              onChangeText={text =>
-                setRequestForm(prev => ({...prev, price: text}))
-              }
-            />
-
-            <TextInput
-              style={[styles.input, styles.observationsInput]}
-              placeholder="Observaciones (opcional)"
-              placeholderTextColor="#999"
-              value={requestForm.observations}
-              multiline={true}
-              numberOfLines={3}
-              onChangeText={text =>
-                setRequestForm(prev => ({...prev, observations: text}))
-              }
-            />
-
-            <TextInput
-              style={styles.input}
-              placeholder="Teléfono del cliente"
-              placeholderTextColor="#999"
-              value={requestForm.passenger_phone}
-              keyboardType="phone-pad"
-              onChangeText={text =>
-                setRequestForm(prev => ({...prev, passenger_phone: text}))
-              }
-            />
-
-            <TouchableOpacity
-              style={styles.requestButton}
-              onPress={handleSendRequest}>
-              <Text style={styles.requestButtonText}>Enviar Solicitud</Text>
-            </TouchableOpacity>
+            </ScrollView>
           </View>
         </>
       )}
@@ -716,7 +798,12 @@ const OperatorHomeScreen: React.FC<OperatorScreenProps> = ({
         <SafeAreaView style={styles.modalContainer}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>
-              Seleccionar {searchMode === 'origin' ? 'origen' : 'destino'}
+              Seleccionar{' '}
+              {searchMode === 'origin'
+                ? 'origen'
+                : searchMode === 'destination'
+                ? 'destino'
+                : 'parada'}
             </Text>
             <TouchableOpacity
               onPress={() => setShowLocationModal(false)}
@@ -1062,25 +1149,37 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: 'rgba(0, 0, 0, 0.5)', // Fondo semi-transparente
   },
-  formContainer: {
+  formWrapper: {
     position: 'absolute',
-    bottom: 20,
-    left: 20,
-    right: 20,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    maxHeight: '80%',
+    backgroundColor: 'transparent',
+    zIndex: 2,
+  },
+  formScrollView: {
+    maxHeight: '100%',
+    borderTopLeftRadius: 25,
+    borderTopRightRadius: 25,
     backgroundColor: 'white',
-    borderRadius: 25,
-    padding: 20,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: -2,
     },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
+  },
+  formScrollContent: {
+    flexGrow: 1,
+  },
+  formContainer: {
+    backgroundColor: 'white',
+    padding: 20,
     alignItems: 'center',
     gap: 10,
-    zIndex: 2,
   },
   input: {
     width: '100%',
@@ -1163,6 +1262,54 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.8)',
     borderRadius: 10,
     padding: 10,
+  },
+  stopsContainer: {
+    width: '100%',
+    marginVertical: 10,
+    gap: 8,
+  },
+  stopsTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  stopItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    marginBottom: 8,
+  },
+  stopText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#666',
+    marginRight: 10,
+  },
+  removeStopButton: {
+    padding: 4,
+  },
+  addStopButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    backgroundColor: '#f0f9ff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#0891b2',
+    borderStyle: 'dashed',
+    marginBottom: 8,
+  },
+  addStopText: {
+    marginLeft: 8,
+    fontSize: 14,
+    color: '#0891b2',
+    fontWeight: '500',
   },
 });
 export default OperatorHomeScreen;
