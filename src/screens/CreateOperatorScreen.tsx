@@ -8,10 +8,9 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
+  SafeAreaView,
 } from 'react-native';
-import {User, Phone, CreditCard, KeyRound} from 'lucide-react-native';
+import {User, Phone, KeyRound} from 'lucide-react-native';
 import {operatorService} from '../services/api';
 
 interface OperatorForm {
@@ -19,19 +18,6 @@ interface OperatorForm {
   last_name: string;
   phone_number: string;
   pin: string;
-}
-
-interface InputFieldProps {
-  icon: React.ReactNode;
-  label: string;
-  required?: boolean;
-  value: string;
-  onChangeText: (text: string) => void;
-  placeholder: string;
-  keyboardType?: 'default' | 'numeric' | 'phone-pad';
-  secureTextEntry?: boolean;
-  maxLength?: number;
-  autoCorrect?: boolean;
 }
 
 const CreateOperatorScreen = ({navigation}: {navigation: any}) => {
@@ -77,51 +63,11 @@ const CreateOperatorScreen = ({navigation}: {navigation: any}) => {
     }
   };
 
-  const InputField = ({
-    icon,
-    label,
-    required = false,
-    value,
-    onChangeText,
-    placeholder,
-    keyboardType = 'default',
-    secureTextEntry = false,
-    maxLength,
-    autoCorrect = false,
-  }: InputFieldProps) => (
-    <View style={styles.inputGroup}>
-      <Text style={styles.label}>
-        {label}
-        {required && <Text style={styles.required}> *</Text>}
-      </Text>
-      <View style={styles.inputContainer}>
-        <View style={styles.iconContainer}>
-          {React.cloneElement(icon as React.ReactElement, {size: 18})}
-        </View>
-        <TextInput
-          style={styles.input}
-          value={value}
-          onChangeText={onChangeText}
-          placeholder={placeholder}
-          placeholderTextColor="#94a3b8"
-          keyboardType={keyboardType}
-          secureTextEntry={secureTextEntry}
-          maxLength={maxLength}
-          autoCorrect={autoCorrect}
-          autoCapitalize="none"
-        />
-      </View>
-    </View>
-  );
-
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled">
+        contentContainerStyle={styles.scrollContent}>
         <View style={styles.form}>
           <View style={styles.header}>
             <Text style={styles.title}>Crear Operador</Text>
@@ -130,45 +76,81 @@ const CreateOperatorScreen = ({navigation}: {navigation: any}) => {
             </Text>
           </View>
 
-          <InputField
-            icon={<User size={20} color="#64748b" />}
-            label="Nombre"
-            required
-            value={form.first_name}
-            onChangeText={text => setForm({...form, first_name: text})}
-            placeholder="Ingrese el nombre"
-          />
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>
+              Nombre<Text style={styles.required}> *</Text>
+            </Text>
+            <View style={styles.inputContainer}>
+              <View style={styles.iconContainer}>
+                <User size={18} color="#64748b" />
+              </View>
+              <TextInput
+                style={styles.input}
+                value={form.first_name}
+                onChangeText={text => setForm({...form, first_name: text})}
+                placeholder="Ingrese el nombre"
+                placeholderTextColor="#94a3b8"
+              />
+            </View>
+          </View>
 
-          <InputField
-            icon={<User size={20} color="#64748b" />}
-            label="Apellidos"
-            required
-            value={form.last_name}
-            onChangeText={text => setForm({...form, last_name: text})}
-            placeholder="Ingrese los apellidos"
-          />
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>
+              Apellidos<Text style={styles.required}> *</Text>
+            </Text>
+            <View style={styles.inputContainer}>
+              <View style={styles.iconContainer}>
+                <User size={18} color="#64748b" />
+              </View>
+              <TextInput
+                style={styles.input}
+                value={form.last_name}
+                onChangeText={text => setForm({...form, last_name: text})}
+                placeholder="Ingrese los apellidos"
+                placeholderTextColor="#94a3b8"
+              />
+            </View>
+          </View>
 
-          <InputField
-            icon={<Phone size={20} color="#64748b" />}
-            label="Teléfono"
-            required
-            value={form.phone_number}
-            onChangeText={text => setForm({...form, phone_number: text})}
-            placeholder="Ingrese el número de teléfono"
-            keyboardType="phone-pad"
-          />
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>
+              Teléfono<Text style={styles.required}> *</Text>
+            </Text>
+            <View style={styles.inputContainer}>
+              <View style={styles.iconContainer}>
+                <Phone size={18} color="#64748b" />
+              </View>
+              <TextInput
+                style={styles.input}
+                value={form.phone_number}
+                onChangeText={text => setForm({...form, phone_number: text})}
+                placeholder="Ingrese el número de teléfono"
+                placeholderTextColor="#94a3b8"
+                keyboardType="phone-pad"
+              />
+            </View>
+          </View>
 
-          <InputField
-            icon={<KeyRound size={20} color="#64748b" />}
-            label="PIN"
-            required
-            value={form.pin}
-            onChangeText={text => setForm({...form, pin: text})}
-            placeholder="Ingrese el PIN"
-            keyboardType="numeric"
-            secureTextEntry
-            maxLength={6}
-          />
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>
+              PIN<Text style={styles.required}> *</Text>
+            </Text>
+            <View style={styles.inputContainer}>
+              <View style={styles.iconContainer}>
+                <KeyRound size={18} color="#64748b" />
+              </View>
+              <TextInput
+                style={styles.input}
+                value={form.pin}
+                onChangeText={text => setForm({...form, pin: text})}
+                placeholder="Ingrese el PIN"
+                placeholderTextColor="#94a3b8"
+                keyboardType="numeric"
+                secureTextEntry
+                maxLength={6}
+              />
+            </View>
+          </View>
 
           <TouchableOpacity
             style={[
@@ -185,7 +167,7 @@ const CreateOperatorScreen = ({navigation}: {navigation: any}) => {
           </TouchableOpacity>
         </View>
       </ScrollView>
-    </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 };
 
@@ -257,14 +239,14 @@ const styles = StyleSheet.create({
     color: '#1e293b',
   },
   submitButton: {
-    backgroundColor: '#0891b2',
+    backgroundColor: '#dc2626',
     padding: 12,
     borderRadius: 8,
     alignItems: 'center',
     marginTop: 24,
     height: 48,
     justifyContent: 'center',
-    shadowColor: '#0891b2',
+    shadowColor: '#dc2626',
     shadowOffset: {
       width: 0,
       height: 2,

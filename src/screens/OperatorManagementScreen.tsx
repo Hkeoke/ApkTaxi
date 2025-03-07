@@ -20,20 +20,20 @@ const OperatorManagementScreen = ({navigation}: {navigation: any}) => {
             style={styles.menuItem}
             onPress={() => navigation.navigate('CreateOperatorScreen')}>
             <View style={styles.menuItemContent}>
-              <Plus size={24} color="#0891b2" />
+              <Plus size={24} color="#dc2626" />
               <Text style={styles.menuItemText}>Crear Nuevo Operador</Text>
             </View>
-            <ChevronRight size={20} color="#64748b" />
+            <ChevronRight size={20} color="#dc2626" />
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.menuItem}
             onPress={() => navigation.navigate('OperatorsListScreen')}>
             <View style={styles.menuItemContent}>
-              <User size={24} color="#0891b2" />
+              <User size={24} color="#dc2626" />
               <Text style={styles.menuItemText}>Lista de Operadores</Text>
             </View>
-            <ChevronRight size={20} color="#64748b" />
+            <ChevronRight size={20} color="#dc2626" />
           </TouchableOpacity>
         </View>
 
@@ -45,10 +45,10 @@ const OperatorManagementScreen = ({navigation}: {navigation: any}) => {
             style={styles.menuItem}
             onPress={() => navigation.navigate('OperatorReports')}>
             <View style={styles.menuItemContent}>
-              <Calendar size={24} color="#0891b2" />
+              <Calendar size={24} color="#dc2626" />
               <Text style={styles.menuItemText}>Reportes por Período</Text>
             </View>
-            <ChevronRight size={20} color="#64748b" />
+            <ChevronRight size={20} color="#dc2626" />
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -91,7 +91,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
+    borderBottomColor: '#dc2626',
   },
   menuItemContent: {
     flexDirection: 'row',

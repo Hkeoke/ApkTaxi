@@ -39,7 +39,7 @@ const AdminScreen = ({navigation}: {navigation: any}) => {
         <TouchableOpacity
           onPress={() => setIsSidebarVisible(true)}
           style={{marginLeft: 15}}>
-          <Menu color="#0891b2" size={24} />
+          <Menu color="#dc2626" size={24} />
         </TouchableOpacity>
       ),
       headerRight: () => (
@@ -48,9 +48,9 @@ const AdminScreen = ({navigation}: {navigation: any}) => {
           style={{marginRight: 15}}
           disabled={refreshing}>
           {refreshing ? (
-            <ActivityIndicator size="small" color="#0891b2" />
+            <ActivityIndicator size="small" color="#dc2626" />
           ) : (
-            <RefreshCw color="#0891b2" size={24} />
+            <RefreshCw color="#dc2626" size={24} />
           )}
         </TouchableOpacity>
       ),
@@ -89,7 +89,7 @@ const AdminScreen = ({navigation}: {navigation: any}) => {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#0891b2" />
+        <ActivityIndicator size="large" color="#dc2626" />
       </View>
     );
   }
@@ -108,20 +108,20 @@ const AdminScreen = ({navigation}: {navigation: any}) => {
             style={styles.menuItem}
             onPress={() => navigation.navigate('DriverManagementScreen')}>
             <View style={styles.menuItemContent}>
-              <Users size={24} color="#0891b2" />
+              <Users size={24} color="#dc2626" />
               <Text style={styles.menuItemText}>Gestionar Choferes</Text>
             </View>
-            <ChevronRight size={20} color="#64748b" />
+            <ChevronRight size={20} color="#dc2626" />
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.menuItem}
             onPress={() => navigation.navigate('OperatorManagementScreen')}>
             <View style={styles.menuItemContent}>
-              <Users size={24} color="#0891b2" />
+              <Users size={24} color="#dc2626" />
               <Text style={styles.menuItemText}>Gestionar Operadores</Text>
             </View>
-            <ChevronRight size={20} color="#64748b" />
+            <ChevronRight size={20} color="#dc2626" />
           </TouchableOpacity>
         </View>
 
@@ -209,7 +209,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
+    borderBottomColor: '#dc2626',
   },
   menuItemContent: {
     flexDirection: 'row',
@@ -235,7 +235,7 @@ const styles = StyleSheet.create({
   statNumber: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#0891b2',
+    color: '#dc2626',
   },
   statLabel: {
     fontSize: 12,

@@ -1,4 +1,4 @@
-import React, {useState} from 'react';
+import React, {useState, useEffect} from 'react';
 import {
   View,
   Text,
@@ -12,72 +12,72 @@ import {
   Platform,
   SafeAreaView,
 } from 'react-native';
-import {User, Phone, Truck, Bike, KeyRound} from 'lucide-react-native';
-import {driverService} from '../services/api';
+import {User, Phone, KeyRound, CreditCard} from 'lucide-react-native';
+import {operatorService} from '../services/api';
 
-interface Driver {
+interface Operator {
   id: string;
   first_name: string;
   last_name: string;
   phone_number: string;
-  vehicle: string;
-  vehicle_type: '2_ruedas' | '4_ruedas';
   pin?: string;
 }
 
-interface InputFieldProps {
-  icon: React.ReactNode;
-  label: string;
-  required?: boolean;
-  value: string | undefined;
-  onChangeText: (text: string) => void;
-  placeholder: string;
-  keyboardType?: 'default' | 'numeric' | 'phone-pad';
-  autoCorrect?: boolean;
-  secureTextEntry?: boolean;
-  maxLength?: number;
-}
-
-const EditDriverScreen = ({
+const EditOperatorScreen = ({
   route,
   navigation,
 }: {
   route: any;
   navigation: any;
 }) => {
-  const driver = route.params?.driver;
+  const operator = route.params?.operator;
   const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState<Partial<Driver>>({
-    first_name: driver.first_name,
-    last_name: driver.last_name,
-    phone_number: driver.phone_number,
-    vehicle: driver.vehicle,
-    vehicle_type: driver.vehicle_type,
+
+  // Asegurarnos de que los datos iniciales se carguen correctamente
+  const [formData, setFormData] = useState<Partial<Operator>>({
+    first_name: operator?.first_name || '',
+    last_name: operator?.last_name || '',
+    phone_number: operator?.users?.phone_number || operator?.phone_number || '', // Intentar obtener el teléfono de users o del operador
     pin: '',
   });
 
+  useEffect(() => {
+    console.log('Operator data:', operator); // Para debug
+    if (operator) {
+      setFormData({
+        first_name: operator.first_name || '',
+        last_name: operator.last_name || '',
+        phone_number:
+          operator.users?.phone_number || operator.phone_number || '',
+        pin: '',
+      });
+    }
+  }, [operator]);
+
   const handleUpdate = async () => {
-    if (
-      !formData.first_name ||
-      !formData.last_name ||
-      !formData.phone_number ||
-      !formData.vehicle
-    ) {
-      Alert.alert('Error', 'Todos los campos son obligatorios');
+    if (!formData.first_name || !formData.last_name || !formData.phone_number) {
+      Alert.alert('Error', 'Nombre, apellidos y teléfono son obligatorios');
       return;
     }
 
     try {
       setLoading(true);
-      await driverService.updateDriver(driver.id, formData);
-      Alert.alert('Éxito', 'Chofer actualizado correctamente', [
+      const updateData = {
+        first_name: formData.first_name,
+        last_name: formData.last_name,
+        phone_number: formData.phone_number,
+        ...(formData.pin ? {pin: formData.pin} : {}),
+      };
+
+      await operatorService.updateOperator(operator.id, updateData);
+      Alert.alert('Éxito', 'Operador actualizado correctamente', [
         {
           text: 'OK',
           onPress: () => navigation.goBack(),
         },
       ]);
     } catch (error) {
-      Alert.alert('Error', 'No se pudo actualizar el Chofer');
+      Alert.alert('Error', 'No se pudo actualizar el Operador');
     } finally {
       setLoading(false);
     }
@@ -94,9 +94,9 @@ const EditDriverScreen = ({
           keyboardShouldPersistTaps="always">
           <View style={styles.form}>
             <View style={styles.header}>
-              <Text style={styles.title}>Editar Chofer</Text>
+              <Text style={styles.title}>Editar Operador</Text>
               <Text style={styles.subtitle}>
-                Modifique los datos del Chofer
+                Modifique los datos del Operador
               </Text>
             </View>
 
@@ -162,26 +162,6 @@ const EditDriverScreen = ({
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>
-                Vehículo<Text style={styles.required}> *</Text>
-              </Text>
-              <View style={styles.inputContainer}>
-                <View style={styles.iconContainer}>
-                  <Truck size={18} color="#64748b" />
-                </View>
-                <TextInput
-                  style={styles.input}
-                  value={formData.vehicle}
-                  onChangeText={text =>
-                    setFormData({...formData, vehicle: text})
-                  }
-                  placeholder="Descripción del vehículo"
-                  placeholderTextColor="#94a3b8"
-                />
-              </View>
-            </View>
-
-            <View style={styles.inputGroup}>
               <Text style={styles.label}>PIN</Text>
               <View style={styles.inputContainer}>
                 <View style={styles.iconContainer}>
@@ -200,64 +180,6 @@ const EditDriverScreen = ({
               </View>
             </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Tipo de Vehículo</Text>
-              <View style={styles.vehicleTypeContainer}>
-                <TouchableOpacity
-                  style={[
-                    styles.vehicleTypeButton,
-                    formData.vehicle_type === '4_ruedas' &&
-                      styles.vehicleTypeSelected,
-                  ]}
-                  onPress={() =>
-                    setFormData({...formData, vehicle_type: '4_ruedas'})
-                  }>
-                  <Truck
-                    size={24}
-                    color={
-                      formData.vehicle_type === '4_ruedas'
-                        ? '#ffffff'
-                        : '#64748b'
-                    }
-                  />
-                  <Text
-                    style={[
-                      styles.vehicleTypeText,
-                      formData.vehicle_type === '4_ruedas' &&
-                        styles.vehicleTypeTextSelected,
-                    ]}>
-                    4 Ruedas
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.vehicleTypeButton,
-                    formData.vehicle_type === '2_ruedas' &&
-                      styles.vehicleTypeSelected,
-                  ]}
-                  onPress={() =>
-                    setFormData({...formData, vehicle_type: '2_ruedas'})
-                  }>
-                  <Bike
-                    size={24}
-                    color={
-                      formData.vehicle_type === '2_ruedas'
-                        ? '#ffffff'
-                        : '#64748b'
-                    }
-                  />
-                  <Text
-                    style={[
-                      styles.vehicleTypeText,
-                      formData.vehicle_type === '2_ruedas' &&
-                        styles.vehicleTypeTextSelected,
-                    ]}>
-                    2 Ruedas
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
             <TouchableOpacity
               style={[
                 styles.submitButton,
@@ -268,7 +190,7 @@ const EditDriverScreen = ({
               {loading ? (
                 <ActivityIndicator color="#ffffff" />
               ) : (
-                <Text style={styles.submitButtonText}>Actualizar Chofer</Text>
+                <Text style={styles.submitButtonText}>Actualizar Operador</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -346,35 +268,6 @@ const styles = StyleSheet.create({
     color: '#1e293b',
     height: '100%',
   },
-  vehicleTypeContainer: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  vehicleTypeButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#ffffff',
-    gap: 6,
-    height: 40,
-  },
-  vehicleTypeSelected: {
-    backgroundColor: '#fecaca',
-    borderColor: '#dc2626',
-  },
-  vehicleTypeText: {
-    fontSize: 14,
-    color: '#64748b',
-    fontWeight: '500',
-  },
-  vehicleTypeTextSelected: {
-    color: '#ffffff',
-  },
   submitButton: {
     backgroundColor: '#dc2626',
     padding: 12,
@@ -402,4 +295,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default EditDriverScreen;
+export default EditOperatorScreen;

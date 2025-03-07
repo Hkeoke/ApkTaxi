@@ -24,19 +24,6 @@ interface DriverForm {
   pin: string;
 }
 
-interface InputFieldProps {
-  icon: React.ReactNode;
-  label: string;
-  required?: boolean;
-  value: string;
-  onChangeText: (text: string) => void;
-  placeholder: string;
-  keyboardType?: 'default' | 'numeric' | 'phone-pad';
-  secureTextEntry?: boolean;
-  maxLength?: number;
-  autoCorrect?: boolean;
-}
-
 const CreateDriverScreen = ({navigation}: {navigation: any}) => {
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState<DriverForm>({
@@ -76,187 +63,176 @@ const CreateDriverScreen = ({navigation}: {navigation: any}) => {
     }
   };
 
-  const InputField = ({
-    icon,
-    label,
-    required = false,
-    value,
-    onChangeText,
-    placeholder,
-    keyboardType = 'default',
-    secureTextEntry,
-    maxLength,
-    autoCorrect = false,
-  }: InputFieldProps) => (
-    <View style={styles.inputGroup}>
-      <Text style={styles.label}>
-        {label}
-        {required && <Text style={styles.required}> *</Text>}
-      </Text>
-      <View style={styles.inputContainer}>
-        <View style={styles.iconContainer}>
-          {React.cloneElement(icon as React.ReactElement, {size: 18})}
-        </View>
-        <TextInput
-          style={styles.input}
-          value={value}
-          onChangeText={onChangeText}
-          placeholder={placeholder}
-          placeholderTextColor="#94a3b8"
-          keyboardType={keyboardType}
-          secureTextEntry={secureTextEntry}
-          maxLength={maxLength}
-          autoCorrect={autoCorrect}
-          autoCapitalize="none"
-          returnKeyType="next"
-          blurOnSubmit={false}
-          enablesReturnKeyAutomatically={false}
-        />
-      </View>
-    </View>
-  );
-
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{flex: 1}}>
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="always"
-          keyboardDismissMode="none">
-          <View style={styles.form}>
-            <View style={styles.header}>
-              <Text style={styles.title}>Información del Chofer</Text>
-              <Text style={styles.subtitle}>
-                Complete los datos para registrar un nuevo chofer
-              </Text>
-            </View>
-
-            <InputField
-              icon={<User size={20} color="#64748b" />}
-              label="Nombre"
-              required
-              value={form.first_name}
-              onChangeText={(text: string) =>
-                setForm({...form, first_name: text})
-              }
-              placeholder="Ingrese el nombre"
-              autoCorrect={false}
-            />
-
-            <InputField
-              icon={<User size={20} color="#64748b" />}
-              label="Apellidos"
-              required
-              value={form.last_name}
-              onChangeText={(text: string) =>
-                setForm({...form, last_name: text})
-              }
-              placeholder="Ingrese los apellidos"
-              autoCorrect={false}
-            />
-
-            <InputField
-              icon={<Phone size={20} color="#64748b" />}
-              label="Teléfono"
-              required
-              value={form.phone_number}
-              onChangeText={(text: string) =>
-                setForm({...form, phone_number: text})
-              }
-              placeholder="Ingrese el número de teléfono"
-              keyboardType="phone-pad"
-            />
-
-            <InputField
-              icon={<KeyRound size={20} color="#64748b" />}
-              label="PIN"
-              required
-              value={form.pin}
-              onChangeText={(text: string) => setForm({...form, pin: text})}
-              placeholder="Ingrese el PIN de 4 dígitos"
-              keyboardType="numeric"
-              secureTextEntry
-              maxLength={6}
-            />
-
-            <InputField
-              icon={<Truck size={20} color="#64748b" />}
-              label="Vehículo"
-              value={form.vehicle}
-              onChangeText={(text: string) => setForm({...form, vehicle: text})}
-              placeholder="Descripción del vehículo"
-              autoCorrect={false}
-            />
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Tipo de Vehículo</Text>
-              <View style={styles.vehicleTypeContainer}>
-                <TouchableOpacity
-                  style={[
-                    styles.vehicleTypeButton,
-                    form.vehicle_type === '4_ruedas' &&
-                      styles.vehicleTypeSelected,
-                  ]}
-                  onPress={() => setForm({...form, vehicle_type: '4_ruedas'})}>
-                  <Truck
-                    size={24}
-                    color={
-                      form.vehicle_type === '4_ruedas' ? '#ffffff' : '#64748b'
-                    }
-                  />
-                  <Text
-                    style={[
-                      styles.vehicleTypeText,
-                      form.vehicle_type === '4_ruedas' &&
-                        styles.vehicleTypeTextSelected,
-                    ]}>
-                    4 Ruedas
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.vehicleTypeButton,
-                    form.vehicle_type === '2_ruedas' &&
-                      styles.vehicleTypeSelected,
-                  ]}
-                  onPress={() => setForm({...form, vehicle_type: '2_ruedas'})}>
-                  <Bike
-                    size={24}
-                    color={
-                      form.vehicle_type === '2_ruedas' ? '#ffffff' : '#64748b'
-                    }
-                  />
-                  <Text
-                    style={[
-                      styles.vehicleTypeText,
-                      form.vehicle_type === '2_ruedas' &&
-                        styles.vehicleTypeTextSelected,
-                    ]}>
-                    2 Ruedas
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <TouchableOpacity
-              style={[
-                styles.submitButton,
-                loading && styles.submitButtonDisabled,
-              ]}
-              onPress={handleSubmit}
-              disabled={loading}>
-              {loading ? (
-                <ActivityIndicator color="#ffffff" />
-              ) : (
-                <Text style={styles.submitButtonText}>Crear Chofer</Text>
-              )}
-            </TouchableOpacity>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}>
+        <View style={styles.form}>
+          <View style={styles.header}>
+            <Text style={styles.title}>Información del Chofer</Text>
+            <Text style={styles.subtitle}>
+              Complete los datos para registrar un nuevo chofer
+            </Text>
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>
+              Nombre<Text style={styles.required}> *</Text>
+            </Text>
+            <View style={styles.inputContainer}>
+              <View style={styles.iconContainer}>
+                <User size={18} color="#64748b" />
+              </View>
+              <TextInput
+                style={styles.input}
+                value={form.first_name}
+                onChangeText={text => setForm({...form, first_name: text})}
+                placeholder="Ingrese el nombre"
+                placeholderTextColor="#94a3b8"
+              />
+            </View>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>
+              Apellidos<Text style={styles.required}> *</Text>
+            </Text>
+            <View style={styles.inputContainer}>
+              <View style={styles.iconContainer}>
+                <User size={18} color="#64748b" />
+              </View>
+              <TextInput
+                style={styles.input}
+                value={form.last_name}
+                onChangeText={text => setForm({...form, last_name: text})}
+                placeholder="Ingrese los apellidos"
+                placeholderTextColor="#94a3b8"
+              />
+            </View>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>
+              Teléfono<Text style={styles.required}> *</Text>
+            </Text>
+            <View style={styles.inputContainer}>
+              <View style={styles.iconContainer}>
+                <Phone size={18} color="#64748b" />
+              </View>
+              <TextInput
+                style={styles.input}
+                value={form.phone_number}
+                onChangeText={text => setForm({...form, phone_number: text})}
+                placeholder="Ingrese el número de teléfono"
+                placeholderTextColor="#94a3b8"
+                keyboardType="phone-pad"
+              />
+            </View>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>
+              PIN<Text style={styles.required}> *</Text>
+            </Text>
+            <View style={styles.inputContainer}>
+              <View style={styles.iconContainer}>
+                <KeyRound size={18} color="#64748b" />
+              </View>
+              <TextInput
+                style={styles.input}
+                value={form.pin}
+                onChangeText={text => setForm({...form, pin: text})}
+                placeholder="Ingrese el PIN de 4 dígitos"
+                placeholderTextColor="#94a3b8"
+                keyboardType="numeric"
+                secureTextEntry
+                maxLength={6}
+              />
+            </View>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Vehículo</Text>
+            <View style={styles.inputContainer}>
+              <View style={styles.iconContainer}>
+                <Truck size={18} color="#64748b" />
+              </View>
+              <TextInput
+                style={styles.input}
+                value={form.vehicle}
+                onChangeText={text => setForm({...form, vehicle: text})}
+                placeholder="Descripción del vehículo"
+                placeholderTextColor="#94a3b8"
+              />
+            </View>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Tipo de Vehículo</Text>
+            <View style={styles.vehicleTypeContainer}>
+              <TouchableOpacity
+                style={[
+                  styles.vehicleTypeButton,
+                  form.vehicle_type === '4_ruedas' &&
+                    styles.vehicleTypeSelected,
+                ]}
+                onPress={() => setForm({...form, vehicle_type: '4_ruedas'})}>
+                <Truck
+                  size={24}
+                  color={
+                    form.vehicle_type === '4_ruedas' ? '#ffffff' : '#64748b'
+                  }
+                />
+                <Text
+                  style={[
+                    styles.vehicleTypeText,
+                    form.vehicle_type === '4_ruedas' &&
+                      styles.vehicleTypeTextSelected,
+                  ]}>
+                  4 Ruedas
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.vehicleTypeButton,
+                  form.vehicle_type === '2_ruedas' &&
+                    styles.vehicleTypeSelected,
+                ]}
+                onPress={() => setForm({...form, vehicle_type: '2_ruedas'})}>
+                <Bike
+                  size={24}
+                  color={
+                    form.vehicle_type === '2_ruedas' ? '#ffffff' : '#64748b'
+                  }
+                />
+                <Text
+                  style={[
+                    styles.vehicleTypeText,
+                    form.vehicle_type === '2_ruedas' &&
+                      styles.vehicleTypeTextSelected,
+                  ]}>
+                  2 Ruedas
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={[
+              styles.submitButton,
+              loading && styles.submitButtonDisabled,
+            ]}
+            onPress={handleSubmit}
+            disabled={loading}>
+            {loading ? (
+              <ActivityIndicator color="#ffffff" />
+            ) : (
+              <Text style={styles.submitButtonText}>Crear Chofer</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 };
@@ -347,8 +323,8 @@ const styles = StyleSheet.create({
     height: 40,
   },
   vehicleTypeSelected: {
-    backgroundColor: '#0891b2',
-    borderColor: '#0891b2',
+    backgroundColor: '#fecaca',
+    borderColor: '#dc2626',
   },
   vehicleTypeText: {
     fontSize: 14,
@@ -359,14 +335,14 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   submitButton: {
-    backgroundColor: '#0891b2',
+    backgroundColor: '#dc2626',
     padding: 12,
     borderRadius: 8,
     alignItems: 'center',
     marginTop: 20,
     height: 44,
     justifyContent: 'center',
-    shadowColor: '#0891b2',
+    shadowColor: '#dc2626',
     shadowOffset: {
       width: 0,
       height: 2,

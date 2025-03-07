@@ -204,7 +204,7 @@ const OperatorTripsScreen = ({user}: {user: {id: string; role?: string}}) => {
       </View>
 
       {loading ? (
-        <ActivityIndicator style={styles.loader} size="large" color="#0891b2" />
+        <ActivityIndicator style={styles.loader} size="large" color="#dc2626" />
       ) : (
         <FlatList
           data={filteredItems}
@@ -239,14 +239,14 @@ const styles = StyleSheet.create({
   },
   activeTab: {
     borderBottomWidth: 2,
-    borderBottomColor: '#0891b2',
+    borderBottomColor: '#dc2626',
   },
   tabText: {
-    color: '#6b7280',
+    color: '#fecaca',
     fontWeight: '500',
   },
   activeTabText: {
-    color: '#0891b2',
+    color: '#dc2626',
   },
   listContainer: {
     padding: 10,

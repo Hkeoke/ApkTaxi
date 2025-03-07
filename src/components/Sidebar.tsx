@@ -109,7 +109,7 @@ const Sidebar = ({isVisible, onClose, role}: SidebarProps) => {
           showsVerticalScrollIndicator={false}>
           <View style={styles.userInfo}>
             <View style={styles.avatarContainer}>
-              <User color="#0891b2" size={50} strokeWidth={1.5} />
+              <User color="#dc2626" size={50} strokeWidth={1.5} />
             </View>
             {user?.role === 'chofer' && (
               <Text style={styles.userName}>
@@ -157,7 +157,7 @@ const Sidebar = ({isVisible, onClose, role}: SidebarProps) => {
                     navigation.navigate('DriverMapScreen');
                     onClose();
                   }}>
-                  <Users color="#0891b2" size={24} />
+                  <Users color="#dc2626" size={24} />
                   <Text style={styles.menuItemText}>Ver Choferes</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -166,7 +166,7 @@ const Sidebar = ({isVisible, onClose, role}: SidebarProps) => {
                     navigation.navigate('OperatorScreen');
                     onClose();
                   }}>
-                  <Map color="#0891b2" size={24} />
+                  <Map color="#dc2626" size={24} />
                   <Text style={styles.menuItemText}>Solicitar Viaje</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -175,7 +175,7 @@ const Sidebar = ({isVisible, onClose, role}: SidebarProps) => {
                     navigation.navigate('GeneralReportsScreen');
                     onClose();
                   }}>
-                  <FileText color="#0891b2" size={24} />
+                  <FileText color="#dc2626" size={24} />
                   <Text style={styles.menuItemText}>Reportes Generales</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -184,7 +184,7 @@ const Sidebar = ({isVisible, onClose, role}: SidebarProps) => {
                     navigation.navigate('AdminDriverBalances');
                     onClose();
                   }}>
-                  <Wallet color="#0891b2" size={24} />
+                  <Wallet color="#dc2626" size={24} />
                   <Text style={styles.menuItemText}>Gestionar Balances</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -195,7 +195,7 @@ const Sidebar = ({isVisible, onClose, role}: SidebarProps) => {
                     });
                     onClose();
                   }}>
-                  <Clock color="#0891b2" size={24} />
+                  <Clock color="#dc2626" size={24} />
                   <Text style={styles.menuItemText}>Mis Viajes</Text>
                 </TouchableOpacity>
               </View>
@@ -209,7 +209,7 @@ const Sidebar = ({isVisible, onClose, role}: SidebarProps) => {
                     navigation.navigate('DriverTrips');
                     onClose();
                   }}>
-                  <Clock color="#0891b2" size={24} />
+                  <Clock color="#dc2626" size={24} />
                   <Text style={styles.menuItemText}>Mis Viajes</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -218,7 +218,7 @@ const Sidebar = ({isVisible, onClose, role}: SidebarProps) => {
                     navigation.navigate('DriverBalanceHistory');
                     onClose();
                   }}>
-                  <Wallet color="#0891b2" size={24} />
+                  <Wallet color="#dc2626" size={24} />
                   <Text style={styles.menuItemText}>Historial de Balance</Text>
                 </TouchableOpacity>
               </View>
@@ -291,7 +291,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
     borderWidth: 2,
-    borderColor: '#0891b2',
+    borderColor: '#dc2626',
   },
   userName: {
     fontSize: 18,
@@ -302,15 +302,15 @@ const styles = StyleSheet.create({
   },
   userRole: {
     fontSize: 13,
-    color: '#0891b2',
+    color: '#dc2626',
     marginTop: 8,
     fontWeight: '600',
-    backgroundColor: '#e0f2fe',
+    backgroundColor: '#fef2f2',
     paddingHorizontal: 14,
     paddingVertical: 5,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#0891b2',
+    borderColor: '#dc2626',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -332,7 +332,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 12,
     borderRadius: 8,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#fef2f2',
     marginBottom: 8,
   },
   menuItemText: {

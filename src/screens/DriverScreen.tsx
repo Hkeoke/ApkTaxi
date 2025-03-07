@@ -17,6 +17,7 @@ import {
   AppStateStatus,
 } from 'react-native';
 import {useNavigation} from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import MapView, {
   PROVIDER_DEFAULT,
@@ -297,47 +298,68 @@ const DriverHomeScreen: React.FC<{
     }
   };
 
-  const fetchPendingRequests = async () => {
-    if (!position || !isOnDuty) return;
+  // Cargar solicitudes rechazadas al iniciar
+  useEffect(() => {
+    const loadRejectedRequests = async () => {
+      try {
+        const saved = await AsyncStorage.getItem('rejectedRequests');
+        if (saved) {
+          setRejectedRequests(JSON.parse(saved));
+        }
+      } catch (error) {
+        console.error('Error loading rejected requests:', error);
+      }
+    };
+    loadRejectedRequests();
+  }, []);
 
-    if (pendingRequests.length === 0 && !activeTrip) {
+  const fetchPendingRequests = async () => {
+    if (!position || !isOnDuty || activeTrip) return;
+
+    if (pendingRequests.length === 0) {
       try {
         const requests = await tripRequestService.getDriverPendingRequests(
           user.id,
           user.driver_profiles.vehicle_type,
         );
 
+        // Obtener las solicitudes rechazadas del storage
+        const savedRejected = await AsyncStorage.getItem('rejectedRequests');
+        const rejectedIds = savedRejected ? JSON.parse(savedRejected) : [];
+
+        // Filtrar solicitudes rechazadas
         const filteredRequests = requests.filter(
-          req => !rejectedRequests.includes(req.id),
+          req => !rejectedIds.includes(req.id),
         );
 
         if (filteredRequests.length > 0) {
-          showNotification(filteredRequests[0]);
+          const currentRequest = filteredRequests[0];
+          showNotification(currentRequest);
           sound?.play();
 
           const route = await calculateRoute(
             {
-              latitude: filteredRequests[0].origin_lat,
-              longitude: filteredRequests[0].origin_lng,
+              latitude: currentRequest.origin_lat,
+              longitude: currentRequest.origin_lng,
             },
             {
-              latitude: filteredRequests[0].destination_lat,
-              longitude: filteredRequests[0].destination_lng,
+              latitude: currentRequest.destination_lat,
+              longitude: currentRequest.destination_lng,
             },
-            filteredRequests[0].trip_stops || [],
+            currentRequest.trip_stops || [],
           );
           setCurrentRoute(route);
 
           if (mapRef.current) {
             const coordinates = [
               {
-                latitude: filteredRequests[0].origin_lat,
-                longitude: filteredRequests[0].origin_lng,
+                latitude: currentRequest.origin_lat,
+                longitude: currentRequest.origin_lng,
               },
               ...route.polyline,
               {
-                latitude: filteredRequests[0].destination_lat,
-                longitude: filteredRequests[0].destination_lng,
+                latitude: currentRequest.destination_lat,
+                longitude: currentRequest.destination_lng,
               },
             ];
 
@@ -346,9 +368,9 @@ const DriverHomeScreen: React.FC<{
               animated: true,
             });
           }
-        }
 
-        setPendingRequests(filteredRequests);
+          setPendingRequests(filteredRequests);
+        }
       } catch (error) {
         console.error('Error al obtener solicitudes:', error);
       }
@@ -365,12 +387,16 @@ const DriverHomeScreen: React.FC<{
           taskDesc: 'Servicio activo',
         });
 
+        let waitTime = 10000; // 10 segundos por defecto
+
         while (BackgroundService.isRunning()) {
           try {
-            if (isOnDuty) {
+            if (isOnDuty && !activeTrip) {
               await fetchPendingRequests();
 
-              // Actualizar la notificación periódicamente
+              // Si hay solicitudes rechazadas recientes, esperar más tiempo
+              waitTime = rejectedRequests.length > 0 ? 30000 : 10000;
+
               await BackgroundService.updateNotification({
                 taskDesc:
                   'Última actualización: ' + new Date().toLocaleTimeString(),
@@ -378,14 +404,12 @@ const DriverHomeScreen: React.FC<{
             }
           } catch (error) {
             console.error('Error in background task:', error);
-            // Continuar ejecutando incluso si hay error
           }
-          await sleep(10000);
+          await sleep(waitTime);
         }
       });
     } catch (error) {
       console.error('Background task error:', error);
-      // Intentar reiniciar el servicio si falla
       startBackgroundService();
     }
   };
@@ -399,7 +423,7 @@ const DriverHomeScreen: React.FC<{
         name: 'ic_launcher',
         type: 'mipmap',
       },
-      color: '#0891b2',
+      color: '#dc2626',
       parameters: {
         delay: 10000,
       },
@@ -434,7 +458,6 @@ const DriverHomeScreen: React.FC<{
     }
   };
 
-  // Modificar el efecto para ser más resiliente
   useEffect(() => {
     let isSubscribed = true;
     let retryCount = 0;
@@ -442,14 +465,13 @@ const DriverHomeScreen: React.FC<{
 
     const handleBackgroundService = async () => {
       try {
-        if (isOnDuty && position && isSubscribed) {
+        if (isOnDuty && position && !activeTrip && isSubscribed) {
           await startBackgroundService();
         } else if (isSubscribed) {
           await stopBackgroundService();
         }
       } catch (error) {
         console.error('Error handling background service:', error);
-        // Reintentar si falla
         if (retryCount < MAX_RETRIES) {
           retryCount++;
           setTimeout(handleBackgroundService, 1000 * retryCount);
@@ -459,9 +481,8 @@ const DriverHomeScreen: React.FC<{
 
     handleBackgroundService();
 
-    // Agregar un listener para cuando la app vuelve a primer plano
     const subscription = AppState.addEventListener('change', nextAppState => {
-      if (nextAppState === 'active' && isOnDuty) {
+      if (nextAppState === 'active' && isOnDuty && !activeTrip) {
         handleBackgroundService();
       }
     });
@@ -471,7 +492,7 @@ const DriverHomeScreen: React.FC<{
       subscription.remove();
       stopBackgroundService();
     };
-  }, [isOnDuty, position]);
+  }, [isOnDuty, position, activeTrip]);
 
   const handleRequestResponse = async (
     requestId: string,
@@ -481,8 +502,16 @@ const DriverHomeScreen: React.FC<{
       await stopAlerts();
 
       if (status === 'rejected') {
-        setRejectedRequests(prev => [...prev, requestId]);
+        // Actualizar estado y storage
+        const updatedRejected = [...rejectedRequests, requestId];
+        setRejectedRequests(updatedRejected);
+        await AsyncStorage.setItem(
+          'rejectedRequests',
+          JSON.stringify(updatedRejected),
+        );
+
         setPendingRequests([]);
+        setCurrentRoute(null);
         return;
       }
 
@@ -586,6 +615,27 @@ const DriverHomeScreen: React.FC<{
 
     return bearing;
   };
+  /*const calculateDistance = (
+    lat1: number,
+    lon1: number,
+    lat2: number,
+    lon2: number,
+  ): number => {
+    const R = 6371e3; // Radio de la tierra en metros
+    const φ1 = (lat1 * Math.PI) / 180; // φ, λ en radianes
+    const φ2 = (lat2 * Math.PI) / 180;
+    const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+    const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+
+    const a =
+      Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+      Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    const distance = R * c; // en metros
+    return distance;
+  };
 
   // Función para verificar si está dentro del radio permitido (comentada temporalmente)
   /*const isWithinAllowedDistance = (
@@ -688,7 +738,7 @@ const DriverHomeScreen: React.FC<{
       if (updatedProfile.balance < 0) {
         // Desactivar conductor (is_on_duty = false) y desactivar usuario (active = false)
         await driverService.updateDriverStatus(user.id, false);
-        await driverService.deleteDriver(user.id); // Esta función actualiza active = false
+        await driverService.desactivateUser(user.id, false); // Esta función actualiza active = false
         setIsOnDuty(false);
 
         Alert.alert(
@@ -921,7 +971,7 @@ const DriverHomeScreen: React.FC<{
         <TouchableOpacity
           onPress={() => setIsSidebarVisible(true)}
           style={{marginLeft: 15}}>
-          <Menu color="#0891b2" size={24} />
+          <Menu color="#dc2626" size={24} />
         </TouchableOpacity>
       ),
     });
@@ -984,7 +1034,7 @@ const DriverHomeScreen: React.FC<{
             <Polyline
               coordinates={currentRoute.polyline}
               strokeWidth={5}
-              strokeColor="#2196F3"
+              strokeColor="#dc2626"
               geodesic={true}
               lineCap="round"
               lineJoin="round"
@@ -1003,10 +1053,10 @@ const DriverHomeScreen: React.FC<{
                     <View
                       style={[
                         styles.markerContainer,
-                        {borderColor: '#3B82F6'},
+                        {borderColor: '#dc2626'},
                       ]}>
                       <View style={styles.markerIconContainer}>
-                        <MapPinIcon size={16} color="#3B82F6" />
+                        <MapPinIcon size={16} color="#dc2626" />
                       </View>
                     </View>
                   </View>
@@ -1067,10 +1117,10 @@ const DriverHomeScreen: React.FC<{
                     <View
                       style={[
                         styles.markerContainer,
-                        {borderColor: '#3B82F6'},
+                        {borderColor: '#dc2626'},
                       ]}>
                       <View style={styles.markerIconContainer}>
-                        <MapPinIcon size={16} color="#3B82F6" />
+                        <MapPinIcon size={16} color="#dc2626" />
                       </View>
                     </View>
                   </View>
@@ -1132,7 +1182,7 @@ const DriverHomeScreen: React.FC<{
             <View style={styles.tripPhaseIndicator}>
               <MapPinIcon
                 size={20}
-                color={tripPhase === 'toPickup' ? '#3B82F6' : '#22C55E'}
+                color={tripPhase === 'toPickup' ? '#dc2626' : '#22C55E'}
               />
               <Text style={styles.tripPhaseText}>
                 {tripPhase === 'toPickup' ? 'Recogida' : 'Destino'}

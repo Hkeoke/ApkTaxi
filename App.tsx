@@ -5,6 +5,12 @@ import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {AuthProvider, useAuthContext} from './src/contexts/AuthContext';
 import {Truck, Users, ClipboardList} from 'lucide-react-native';
+import {PermissionsAndroid, Platform} from 'react-native';
+import {View} from 'react-native';
+import {Text} from 'react-native';
+import {useEffect, useState} from 'react';
+import notifee, {AuthorizationStatus} from '@notifee/react-native';
+//import {AndroidImportance} from '@notifee/react-native';
 
 // Screens de Autenticación
 import LoginScreen from './src/screens/LoginScreen';
@@ -13,10 +19,6 @@ import AdminScreen from './src/screens/AdminScreen';
 // Screens para Choferes
 import DriverHomeScreen from './src/screens/DriverScreen';
 import OperatorHomeScreen from './src/screens/OperatorScreen';
-import {PermissionsAndroid, Platform} from 'react-native';
-import {View} from 'react-native';
-import {Text} from 'react-native';
-import {useEffect, useState} from 'react';
 import OperatorTripsScreen from './src/screens/OperatorTripsScreen';
 import DriversListScreen from './src/screens/DriversListScreen';
 import DriverManagementScreen from './src/screens/DriverManagementScreen';
@@ -30,9 +32,10 @@ import CreateOperatorScreen from './src/screens/CreateOperatorScreen';
 import OperatorsListScreen from './src/screens/OperatorsListScreen';
 import OperatorReportsScreen from './src/screens/OperatorReportsScreen';
 import GeneralReportsScreen from './src/screens/GeneralReportsScreen';
-import DriverTripsScreen from './src/screens/DriverTripsScreen';
 import AdminDriverBalances from './src/screens/AdminDriverBalances';
 import DriverBalanceHistory from './src/screens/DriverBalanceHistory';
+import EditOperatorScreen from './src/screens/EditOperatorScreen';
+import DriverTripsScreen from './src/screens/DriverTripsScreen';
 
 export type RootStackParamList = {
   Login: undefined;
@@ -41,6 +44,22 @@ export type RootStackParamList = {
   };
   DriverTabs: undefined;
   OperatorTabs: undefined;
+  DriverBalanceHistory: undefined;
+  OperatorScreen: undefined;
+  DriversListScreen: undefined;
+  DriverManagementScreen: undefined;
+  CreateDriverScreen: undefined;
+  OperatorManagementScreen: undefined;
+  DriverTripsAnalytics: undefined;
+  DriverMapScreen: undefined;
+  EditDriver: undefined;
+  DriverReports: undefined;
+  CreateOperatorScreen: undefined;
+  OperatorsListScreen: undefined;
+  OperatorReports: undefined;
+  GeneralReportsScreen: undefined;
+  AdminDriverBalances: undefined;
+  EditOperator: undefined;
   // ... otros tipos de rutas ...
 };
 
@@ -52,8 +71,8 @@ function AdminTabs() {
     <Tab.Navigator
       screenOptions={{
         tabBarStyle: {backgroundColor: '#ffffff'},
-        tabBarActiveTintColor: '#0891b2',
-        tabBarInactiveTintColor: '#64748b',
+        tabBarActiveTintColor: '#dc2626',
+        tabBarInactiveTintColor: '#fecaca',
       }}>
       <Tab.Screen
         name="AdminHome"
@@ -84,8 +103,8 @@ function DriverTabs() {
       screenOptions={{
         headerShown: true,
         tabBarStyle: {backgroundColor: '#ffffff'},
-        tabBarActiveTintColor: '#0891b2',
-        tabBarInactiveTintColor: '#64748b',
+        tabBarActiveTintColor: '#dc2626',
+        tabBarInactiveTintColor: '#fecaca',
       }}>
       <Tab.Screen
         name="DriverHome"
@@ -116,8 +135,8 @@ function OperatorTabs() {
       screenOptions={{
         headerShown: true,
         tabBarStyle: {backgroundColor: '#ffffff'},
-        tabBarActiveTintColor: '#0891b2',
-        tabBarInactiveTintColor: '#64748b',
+        tabBarActiveTintColor: '#dc2626',
+        tabBarInactiveTintColor: '#fecaca',
       }}>
       <Tab.Screen
         name="OperatorHome"
@@ -289,6 +308,14 @@ function NavigationStack() {
                   title: 'Gestionar Balances',
                 }}
               />
+              <Stack.Screen
+                name="EditOperator"
+                component={EditOperatorScreen}
+                options={{
+                  headerShown: true,
+                  title: 'Editar Operador',
+                }}
+              />
             </>
           )}
         </>
@@ -298,40 +325,51 @@ function NavigationStack() {
 }
 
 function App(): React.JSX.Element {
-  const [isPermissionGranted, setIsPermissionGranted] = useState(false);
-
+  const [isLocationPermissionGranted, setIsLocationPermissionGranted] =
+    useState(false);
+  const [isNotificationPermissionGranted, setIsNotificationPermissionGranted] =
+    useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const checkPermissions = async () => {
       try {
+        // Verificar permisos de ubicación
         if (Platform.OS === 'android') {
-          const granted = await PermissionsAndroid.request(
+          const locationGranted = await PermissionsAndroid.request(
             PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-
             {
               title: 'Permiso de ubicación',
-
               message: 'La aplicación necesita acceso a tu ubicación',
-
               buttonNeutral: 'Preguntar luego',
-
               buttonNegative: 'Cancelar',
-
               buttonPositive: 'OK',
             },
           );
 
-          setIsPermissionGranted(
-            granted === PermissionsAndroid.RESULTS.GRANTED,
+          setIsLocationPermissionGranted(
+            locationGranted === PermissionsAndroid.RESULTS.GRANTED,
           );
-        } else {
-          // Manejar permisos para iOS si es necesario
 
-          setIsPermissionGranted(true);
+          // Si se concedió el permiso de ubicación, solicitar permisos de notificaciones
+          if (locationGranted === PermissionsAndroid.RESULTS.GRANTED) {
+            const notifeeSettings = await notifee.requestPermission();
+            setIsNotificationPermissionGranted(
+              notifeeSettings.authorizationStatus >=
+                AuthorizationStatus.AUTHORIZED,
+            );
+          }
+        } else {
+          // Para iOS
+          setIsLocationPermissionGranted(true);
+          const notifeeSettings = await notifee.requestPermission();
+          setIsNotificationPermissionGranted(
+            notifeeSettings.authorizationStatus >=
+              AuthorizationStatus.AUTHORIZED,
+          );
         }
       } catch (err) {
-        console.warn(err);
+        console.warn('Error al verificar permisos:', err);
       } finally {
         setLoading(false);
       }
@@ -348,10 +386,28 @@ function App(): React.JSX.Element {
     );
   }
 
-  if (!isPermissionGranted) {
+  if (!isLocationPermissionGranted) {
     return (
       <View style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
         <Text>Se requiere permiso de ubicación para usar la aplicación</Text>
+      </View>
+    );
+  }
+
+  if (!isNotificationPermissionGranted) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: 20,
+        }}>
+        <Text style={{textAlign: 'center'}}>
+          Se requieren permisos de notificaciones para recibir alertas de nuevos
+          viajes. Por favor, habilita las notificaciones en la configuración de
+          tu dispositivo.
+        </Text>
       </View>
     );
   }

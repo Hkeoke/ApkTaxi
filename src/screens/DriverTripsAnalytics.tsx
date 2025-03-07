@@ -91,7 +91,7 @@ const DriverTripsAnalytics = ({
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#0891b2" />
+        <ActivityIndicator size="large" color="#dc2626" />
       </View>
     );
   }
@@ -148,19 +148,19 @@ const DriverTripsAnalytics = ({
 
       <View style={styles.statsContainer}>
         <StatCard
-          icon={<TrendingUp size={24} color="#0891b2" />}
+          icon={<TrendingUp size={24} color="#dc2626" />}
           title="Total Viajes"
           value={stats?.totalTrips || 0}
           subtitle="viajes completados"
         />
         <StatCard
-          icon={<DollarSign size={24} color="#0891b2" />}
+          icon={<DollarSign size={24} color="#dc2626" />}
           title="Ganancias Totales"
           value={`$${stats?.totalEarnings?.toFixed(2) || '0.00'}`}
           subtitle="ingresos del período"
         />
         <StatCard
-          icon={<Wallet size={24} color="#0891b2" />}
+          icon={<Wallet size={24} color="#dc2626" />}
           title="Balance Actual"
           value={`$${stats?.balance?.toFixed(2) || '0.00'}`}
           subtitle="disponible"
@@ -200,10 +200,10 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 20,
-    backgroundColor: '#f1f5f9',
+    backgroundColor: '#fef2f2',
   },
   timeFrameSelected: {
-    backgroundColor: '#0891b2',
+    backgroundColor: '#dc2626',
   },
   timeFrameText: {
     fontSize: 14,

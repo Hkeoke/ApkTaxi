@@ -12,9 +12,11 @@ import {
 import {driverService} from '../services/api';
 import {useAuthContext} from '../contexts/AuthContext';
 import {DriverProfile} from '../utils/db_types';
+import {Search} from 'lucide-react-native';
 
 const AdminDriverBalances = () => {
   const [drivers, setDrivers] = useState<DriverProfile[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [selectedDriver, setSelectedDriver] = useState<DriverProfile | null>(
     null,
   );
@@ -64,6 +66,11 @@ const AdminDriverBalances = () => {
     }
   };
 
+  const filteredDrivers = drivers.filter(driver => {
+    const fullName = `${driver.first_name} ${driver.last_name}`.toLowerCase();
+    return fullName.includes(searchQuery.toLowerCase());
+  });
+
   const renderDriver = ({item}: {item: DriverProfile}) => (
     <View style={styles.driverCard}>
       <View style={styles.driverInfo}>
@@ -99,8 +106,19 @@ const AdminDriverBalances = () => {
 
   return (
     <View style={styles.container}>
+      <View style={styles.searchContainer}>
+        <Search size={20} color="#9ca3af" style={styles.searchIcon} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Buscar conductor..."
+          placeholderTextColor="#9ca3af"
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+      </View>
+
       <FlatList
-        data={drivers}
+        data={filteredDrivers}
         renderItem={renderDriver}
         keyExtractor={item => item.id}
         contentContainerStyle={styles.listContainer}
@@ -271,6 +289,25 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: '500',
+  },
+  searchContainer: {
+    padding: 16,
+    paddingBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'white',
+    borderRadius: 8,
+    margin: 16,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+  },
+  searchIcon: {
+    marginLeft: 12,
+  },
+  searchInput: {
+    flex: 1,
+    padding: 1,
+    fontSize: 16,
   },
 });
 

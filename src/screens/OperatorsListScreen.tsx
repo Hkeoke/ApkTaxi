@@ -16,7 +16,7 @@ import {
   Power,
   PowerOff,
 } from 'lucide-react-native';
-import {operatorService} from '../services/api';
+import {operatorService, authService} from '../services/api';
 
 interface Operator {
   id: string;
@@ -71,7 +71,7 @@ const OperatorsListScreen = ({navigation}: {navigation: any}) => {
         style: 'destructive',
         onPress: async () => {
           try {
-            await operatorService.deleteOperator(operatorId);
+            await authService.deleteUser(operatorId);
             fetchOperators();
           } catch (error) {
             Alert.alert('Error', 'No se pudo eliminar el operador');
@@ -84,18 +84,20 @@ const OperatorsListScreen = ({navigation}: {navigation: any}) => {
   const renderOperator = ({item}: {item: Operator}) => (
     <View style={styles.operatorCard}>
       <View style={styles.operatorInfo}>
-        <View
-          style={[
-            styles.statusIndicator,
-            {
-              backgroundColor: item.is_active ? '#22c55e' : '#94a3b8',
-            },
-          ]}
-        />
         <View style={styles.operatorDetails}>
-          <Text style={styles.operatorName}>
-            {item.first_name} {item.last_name}
-          </Text>
+          <View style={styles.nameContainer}>
+            <View
+              style={[
+                styles.statusIndicator,
+                {
+                  backgroundColor: item.is_active ? '#22c55e' : '#94a3b8',
+                },
+              ]}
+            />
+            <Text style={styles.operatorName}>
+              {item.first_name} {item.last_name}
+            </Text>
+          </View>
           <Text style={styles.operatorIdentity}>{item.identity_card}</Text>
           <Text style={styles.operatorPhone}>{item.phone_number}</Text>
         </View>
@@ -134,7 +136,7 @@ const OperatorsListScreen = ({navigation}: {navigation: any}) => {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#0891b2" />
+        <ActivityIndicator size="large" color="#dc2626" />
       </View>
     );
   }
@@ -195,11 +197,11 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    marginRight: 10,
+    marginRight: 6,
   },
   operatorDetails: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
   },
   operatorName: {
     fontSize: 15,
@@ -220,6 +222,8 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   actionButton: {
+    backgroundColor: '#fef2f2',
+    borderColor: '#fecaca',
     padding: 6,
   },
   emptyText: {
@@ -227,6 +231,12 @@ const styles = StyleSheet.create({
     color: '#64748b',
     fontSize: 16,
     marginTop: 24,
+  },
+  nameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 2,
+    marginTop: 20,
   },
 });
 

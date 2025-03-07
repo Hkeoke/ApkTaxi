@@ -130,14 +130,14 @@ const OperatorReportsScreen = () => {
           <TouchableOpacity
             style={styles.inputContainer}
             onPress={() => setShowStartPicker(true)}>
-            <Calendar size={20} color="#64748b" />
+            <Calendar size={20} color="#dc2626" />
             <Text style={styles.input}>{startDate.toLocaleDateString()}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.inputContainer}
             onPress={() => setShowEndPicker(true)}>
-            <Calendar size={20} color="#64748b" />
+            <Calendar size={20} color="#dc2626" />
             <Text style={styles.input}>{endDate.toLocaleDateString()}</Text>
           </TouchableOpacity>
         </View>
@@ -146,7 +146,7 @@ const OperatorReportsScreen = () => {
           <TouchableOpacity
             style={styles.operatorSelector}
             onPress={() => setShowOperators(!showOperators)}>
-            <User size={20} color="#64748b" />
+            <User size={20} color="#dc2626" />
             <Text style={styles.operatorSelectorText}>
               {selectedOperator
                 ? `${selectedOperator.first_name} ${selectedOperator.last_name}`
@@ -166,9 +166,9 @@ const OperatorReportsScreen = () => {
             onPress={fetchTrips}
             disabled={loading}>
             {loading ? (
-              <ActivityIndicator color="#ffffff" />
+              <ActivityIndicator color="#dc2626" />
             ) : (
-              <Search size={24} color="#ffffff" />
+              <Search size={24} color="#dc2626" />
             )}
           </TouchableOpacity>
         </View>
@@ -297,7 +297,7 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   searchButton: {
-    backgroundColor: '#0891b2',
+    backgroundColor: 'transparent',
     width: 44,
     height: 44,
     borderRadius: 8,
@@ -360,12 +360,12 @@ const styles = StyleSheet.create({
   },
   tripDate: {
     fontSize: 13,
-    color: '#64748b',
+    color: '#dc2626',
   },
   tripPrice: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#0891b2',
+    color: '#dc2626',
   },
   tripDetails: {
     marginBottom: 8,

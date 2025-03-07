@@ -1,4 +1,5 @@
 import React, {useState, useEffect} from 'react';
+import {useFocusEffect} from '@react-navigation/native';
 import {
   View,
   Text,
@@ -7,6 +8,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  TextInput,
 } from 'react-native';
 import {
   User,
@@ -18,7 +20,7 @@ import {
   Car,
   TrendingUp,
 } from 'lucide-react-native';
-import {driverService} from '../services/api';
+import {authService, driverService} from '../services/api';
 
 interface Driver {
   id: string;
@@ -37,10 +39,13 @@ const DriversListScreen = ({navigation}: {navigation: any}) => {
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
-  useEffect(() => {
-    fetchDrivers();
-  }, []);
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchDrivers();
+    }, []),
+  );
 
   const fetchDrivers = async () => {
     try {
@@ -59,7 +64,10 @@ const DriversListScreen = ({navigation}: {navigation: any}) => {
     currentStatus: boolean,
   ) => {
     try {
-      await driverService.updateDriverStatus(driverId, !currentStatus);
+      await driverService.desactivateUser(
+        driverId,
+        currentStatus ? false : true,
+      );
       fetchDrivers();
       Alert.alert(
         'Éxito',
@@ -81,7 +89,7 @@ const DriversListScreen = ({navigation}: {navigation: any}) => {
           style: 'destructive',
           onPress: async () => {
             try {
-              await driverService.deleteDriver(driverId);
+              await authService.deleteUser(driverId);
               fetchDrivers();
               Alert.alert('Éxito', 'Chofer eliminado correctamente');
             } catch (error) {
@@ -93,11 +101,21 @@ const DriversListScreen = ({navigation}: {navigation: any}) => {
     );
   };
 
+  const filteredDrivers = drivers.filter(driver => {
+    const fullName = `${driver.first_name} ${driver.last_name}`.toLowerCase();
+    const query = searchQuery.toLowerCase();
+    return (
+      fullName.includes(query) ||
+      driver.phone_number.includes(query) ||
+      driver.vehicle.toLowerCase().includes(query)
+    );
+  });
+
   const renderDriver = ({item}: {item: Driver}) => (
     <View style={styles.driverCard}>
       <View style={styles.driverHeader}>
         <View style={styles.driverAvatar}>
-          <User size={24} color="#0891b2" />
+          <User size={24} color="#dc2626" />
         </View>
         <View style={styles.driverInfo}>
           <Text style={styles.driverName}>
@@ -182,22 +200,36 @@ const DriversListScreen = ({navigation}: {navigation: any}) => {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#0891b2" />
+        <ActivityIndicator size="large" color="#dc2626" />
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Buscar por nombre, teléfono o vehículo..."
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholderTextColor="#94a3b8"
+        />
+      </View>
+
       <FlatList
-        data={drivers}
+        data={filteredDrivers}
         renderItem={renderDriver}
         keyExtractor={item => item.id}
         contentContainerStyle={styles.listContainer}
         onRefresh={fetchDrivers}
         refreshing={refreshing}
         ListEmptyComponent={
-          <Text style={styles.emptyText}>No hay choferes registrados</Text>
+          <Text style={styles.emptyText}>
+            {searchQuery
+              ? 'No se encontraron choferes con esa búsqueda'
+              : 'No hay choferes registrados'}
+          </Text>
         }
       />
     </View>
@@ -240,7 +272,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: '#e0f2fe',
+    backgroundColor: '#fef2f2',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 6,
@@ -313,9 +345,8 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   editButton: {
-    backgroundColor: '#e0f2fe',
-    borderWidth: 1,
-    borderColor: '#bae6fd',
+    backgroundColor: '#fef2f2',
+    borderColor: '#fecaca',
   },
   deleteButton: {
     backgroundColor: '#fee2e2',
@@ -332,6 +363,21 @@ const styles = StyleSheet.create({
     color: '#64748b',
     fontSize: 16,
     marginTop: 24,
+  },
+  searchContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+  },
+  searchInput: {
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    fontSize: 14,
+    color: '#1e293b',
   },
 });
 

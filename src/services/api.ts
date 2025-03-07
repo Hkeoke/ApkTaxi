@@ -356,6 +356,47 @@ export const authService = {
     if (error) throw error;
     return data;
   },
+
+  async deleteUser(userId: string) {
+    try {
+      // Primero obtenemos el rol del usuario para saber qué perfil eliminar
+      const {data: userData, error: userError} = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', userId)
+        .single();
+
+      if (userError) throw userError;
+
+      // Eliminamos el perfil correspondiente según el rol
+      if (userData?.role === 'chofer') {
+        const {error: driverError} = await supabase
+          .from('driver_profiles')
+          .delete()
+          .eq('id', userId);
+        if (driverError) throw driverError;
+      } else if (userData?.role === 'operador') {
+        const {error: operatorError} = await supabase
+          .from('operator_profiles')
+          .delete()
+          .eq('id', userId);
+        if (operatorError) throw operatorError;
+      }
+
+      // Finalmente eliminamos el usuario
+      const {error: deleteError} = await supabase
+        .from('users')
+        .delete()
+        .eq('id', userId);
+
+      if (deleteError) throw deleteError;
+
+      return {success: true};
+    } catch (error) {
+      console.error('Error eliminando usuario:', error);
+      throw error;
+    }
+  },
 };
 
 export const driverService = {
@@ -617,43 +658,56 @@ export const driverService = {
     return data;
   },
 
-  async deleteDriver(driverId: string) {
+  async desactivateUser(driverId: string, activate: boolean) {
     // Para eliminar un chofer, solo desactivamos su usuario
     const {error: userError} = await supabase
       .from('users')
-      .update({active: false})
+      .update({active: activate})
       .eq('id', driverId);
 
     if (userError) throw userError;
   },
 
   async updateDriver(driverId: string, driverData: Partial<DriverProfile>) {
-    const updates: any = {
-      first_name: driverData.first_name,
-      last_name: driverData.last_name,
-      phone_number: driverData.phone_number,
-      vehicle: driverData.vehicle,
-      vehicle_type: driverData.vehicle_type,
-    };
+    try {
+      // Preparar actualizaciones para driver_profiles
+      const driverUpdates: any = {
+        first_name: driverData.first_name,
+        last_name: driverData.last_name,
+        phone_number: driverData.phone_number,
+        vehicle: driverData.vehicle,
+        vehicle_type: driverData.vehicle_type,
+      };
 
-    // Solo incluir el PIN en la actualización si se proporcionó uno nuevo
-    if (driverData.pin) {
-      // También actualizar el PIN en la tabla de usuarios
-      await supabase
-        .from('users')
-        .update({pin: driverData.pin})
-        .eq('id', driverId);
+      // Actualizar usuario si hay cambios en phone_number o pin
+      if (driverData.phone_number || driverData.pin) {
+        const userUpdates: any = {};
+        if (driverData.phone_number)
+          userUpdates.phone_number = driverData.phone_number;
+        if (driverData.pin) userUpdates.pin = driverData.pin;
+
+        const {error: userError} = await supabase
+          .from('users')
+          .update(userUpdates)
+          .eq('id', driverId);
+
+        if (userError) throw userError;
+      }
+
+      // Actualizar perfil del conductor
+      const {data, error: driverError} = await supabase
+        .from('driver_profiles')
+        .update(driverUpdates)
+        .eq('id', driverId)
+        .select()
+        .single();
+
+      if (driverError) throw driverError;
+      return data;
+    } catch (error) {
+      console.error('Error updating driver:', error);
+      throw error;
     }
-
-    const {data, error} = await supabase
-      .from('driver_profiles')
-      .update(updates)
-      .eq('id', driverId)
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data;
   },
 
   async toggleDutyStatus(driverId: string) {
@@ -843,19 +897,27 @@ export const operatorService = {
   },
 
   async getAllOperators() {
-    const {data, error} = await supabase
-      .from('operator_profiles')
-      .select(
-        `
-        id,
-        first_name,
-        last_name
-      `,
-      )
-      .order('first_name', {ascending: true});
+    try {
+      const {data, error} = await supabase
+        .from('operator_profiles')
+        .select(
+          `
+          *,
+          users (
+            id,
+            phone_number,
+            active
+          )
+        `,
+        )
+        .order('created_at', {ascending: false});
 
-    if (error) throw error;
-    return data || [];
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error getting operators:', error);
+      throw error;
+    }
   },
 
   async createOperator(operatorData: any) {
@@ -894,29 +956,43 @@ export const operatorService = {
     }
   },
 
-  async updateOperator(operatorId: string, operatorData: any) {
-    const updates = {
-      first_name: operatorData.first_name,
-      last_name: operatorData.last_name,
-      identity_card: operatorData.identity_card,
-    };
+  async updateOperator(
+    operatorId: string,
+    operatorData: Partial<OperatorProfile>,
+  ) {
+    try {
+      // Actualizar perfil del operador
+      const {data, error: operatorError} = await supabase
+        .from('operator_profiles')
+        .update({
+          first_name: operatorData.first_name,
+          last_name: operatorData.last_name,
+        })
+        .eq('id', operatorId)
+        .select()
+        .single();
 
-    if (operatorData.pin) {
-      await supabase
-        .from('users')
-        .update({pin: operatorData.pin})
-        .eq('id', operatorId);
+      // Actualizar usuario si hay cambios en phone_number o pin
+      if ('phone_number' in operatorData || 'pin' in operatorData) {
+        const userUpdates: any = {};
+        if ('phone_number' in operatorData)
+          userUpdates.phone_number = operatorData.phone_number;
+        if ('pin' in operatorData) userUpdates.pin = operatorData.pin;
+
+        const {error: userError} = await supabase
+          .from('users')
+          .update(userUpdates)
+          .eq('id', operatorId);
+
+        if (userError) throw userError;
+      }
+
+      if (operatorError) throw operatorError;
+      return data;
+    } catch (error) {
+      console.error('Error updating operator:', error);
+      throw error;
     }
-
-    const {data, error} = await supabase
-      .from('operator_profiles')
-      .update(updates)
-      .eq('id', operatorId)
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data;
   },
 
   async updateOperatorStatus(operatorId: string, isActive: boolean) {

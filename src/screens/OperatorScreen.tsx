@@ -323,7 +323,7 @@ const OperatorHomeScreen: React.FC<OperatorScreenProps> = ({
         onChangeText={handleSearchChange}
       />
 
-      {isSearching && <ActivityIndicator size="small" color="#000" />}
+      {isSearching && <ActivityIndicator size="small" color="#dc2626" />}
 
       <FlatList
         data={searchResults}
@@ -353,7 +353,7 @@ const OperatorHomeScreen: React.FC<OperatorScreenProps> = ({
           setSearchMode('stop');
           setShowLocationModal(true);
         }}>
-        <Plus size={20} color="#0891b2" />
+        <Plus size={20} color="#dc2626" />
         <Text style={styles.addStopText}>Agregar parada</Text>
       </TouchableOpacity>
       {requestForm.stops.map((stop, index) => (
@@ -551,7 +551,7 @@ const OperatorHomeScreen: React.FC<OperatorScreenProps> = ({
         <TouchableOpacity
           onPress={() => setIsSidebarVisible(true)}
           style={{marginLeft: 15}}>
-          <Menu color="#0891b2" size={24} />
+          <Menu color="#dc2626" size={24} />
         </TouchableOpacity>
       ),
     });
@@ -646,7 +646,7 @@ const OperatorHomeScreen: React.FC<OperatorScreenProps> = ({
       <TouchableOpacity
         style={styles.floatingButton}
         onPress={() => setShowRequestForm(true)}>
-        <Plus color="#fff" size={24} />
+        <Plus color="#000" size={24} />
       </TouchableOpacity>
 
       {showRequestForm && (
@@ -712,7 +712,7 @@ const OperatorHomeScreen: React.FC<OperatorScreenProps> = ({
                         size={20}
                         color={
                           requestForm.vehicle_type === '4_ruedas'
-                            ? '#0891b2'
+                            ? '#dc2626'
                             : '#666'
                         }
                       />
@@ -735,7 +735,7 @@ const OperatorHomeScreen: React.FC<OperatorScreenProps> = ({
                         size={20}
                         color={
                           requestForm.vehicle_type === '2_ruedas'
-                            ? '#0891b2'
+                            ? '#dc2626'
                             : '#666'
                         }
                       />
@@ -850,7 +850,7 @@ const OperatorHomeScreen: React.FC<OperatorScreenProps> = ({
 
           {loading && (
             <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#0891b2" />
+              <ActivityIndicator size="large" color="#dc2626" />
             </View>
           )}
 
@@ -954,7 +954,7 @@ const styles = StyleSheet.create({
   loadingText: {
     padding: 16,
     fontSize: 16,
-    color: '#666',
+    color: '#dc2626',
     textAlign: 'center',
   },
   driverItem: {
@@ -986,7 +986,7 @@ const styles = StyleSheet.create({
   },
 
   confirmButtonDisabled: {
-    backgroundColor: '#ccc',
+    backgroundColor: '#dc2626',
   },
   panelHeader: {
     flexDirection: 'row',
@@ -995,7 +995,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     paddingBottom: 15,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: '#dc2626',
   },
   panelTitle: {
     fontSize: 20,
@@ -1071,7 +1071,7 @@ const styles = StyleSheet.create({
   },
   confirmButton: {
     margin: 20,
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#dc2626',
     padding: 15,
     borderRadius: 8,
     alignItems: 'center',
@@ -1126,7 +1126,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 30,
     right: 20,
-    backgroundColor: '#0891b2',
+    backgroundColor: '#dc2626',
     width: 56,
     height: 56,
     borderRadius: 28,
@@ -1205,7 +1205,7 @@ const styles = StyleSheet.create({
     paddingTop: 12,
   },
   requestButton: {
-    backgroundColor: '#0891b2',
+    backgroundColor: '#dc2626',
     padding: 16,
     borderRadius: 15,
     alignItems: 'center',
@@ -1246,8 +1246,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   radioButtonSelected: {
-    borderColor: '#0891b2',
-    backgroundColor: '#f0f9ff',
+    borderColor: '#dc2626',
+    backgroundColor: '#fef2f2',
   },
   radioText: {
     marginLeft: 8,
@@ -1298,17 +1298,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 12,
-    backgroundColor: '#f0f9ff',
+    backgroundColor: '#fef2f2',
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#0891b2',
+    borderColor: '#dc2626',
     borderStyle: 'dashed',
     marginBottom: 8,
   },
   addStopText: {
     marginLeft: 8,
     fontSize: 14,
-    color: '#0891b2',
+    color: '#dc2626',
     fontWeight: '500',
   },
 });

@@ -82,7 +82,7 @@ const DriverBalanceHistory = () => {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#0891b2" />
+        <ActivityIndicator size="large" color="#dc2626" />
       </View>
     );
   }
@@ -163,10 +163,10 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: 16,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#fef2f2',
   },
   activeFilter: {
-    backgroundColor: '#0891b2',
+    backgroundColor: '#dc2626',
   },
   filterText: {
     fontSize: 14,

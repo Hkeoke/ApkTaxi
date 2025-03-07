@@ -469,21 +469,21 @@ const GeneralReportsScreen = () => {
           <TouchableOpacity
             style={styles.filterButton}
             onPress={() => setShowFilters(!showFilters)}>
-            <Filter size={20} color="#64748b" />
+            <Filter size={20} color="#dc2626" />
             <Text style={styles.filterButtonText}>Filtros</Text>
-            <ChevronDown size={20} color="#64748b" />
+            <ChevronDown size={20} color="#dc2626" />
           </TouchableOpacity>
 
           <View style={styles.exportButtons}>
             <TouchableOpacity
               style={styles.exportButton}
               onPress={handleExportPDF}>
-              <FileText size={20} color="#ffffff" />
+              <FileText size={20} color="#dc2626" />
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.exportButton}
               onPress={handleExportExcel}>
-              <FileSpreadsheet size={20} color="#ffffff" />
+              <FileSpreadsheet size={20} color="#dc2626" />
             </TouchableOpacity>
           </View>
         </View>
@@ -493,7 +493,7 @@ const GeneralReportsScreen = () => {
             <TouchableOpacity
               style={styles.yearSelector}
               onPress={() => setShowYearPicker(true)}>
-              <Calendar size={20} color="#64748b" />
+              <Calendar size={20} color="#dc2626" />
               <Text
                 style={[
                   styles.yearSelectorText,
@@ -508,7 +508,7 @@ const GeneralReportsScreen = () => {
                     setSelectedYear(null);
                   }}
                   style={styles.clearButton}>
-                  <X size={16} color="#ef4444" />
+                  <X size={16} color="#dc2626" />
                 </TouchableOpacity>
               )}
             </TouchableOpacity>
@@ -517,7 +517,7 @@ const GeneralReportsScreen = () => {
               <TouchableOpacity
                 style={styles.inputContainer}
                 onPress={() => setShowStartPicker(true)}>
-                <Calendar size={20} color="#64748b" />
+                <Calendar size={20} color="#dc2626" />
                 <Text style={styles.input}>
                   {startDate.toLocaleDateString()}
                 </Text>
@@ -526,7 +526,7 @@ const GeneralReportsScreen = () => {
               <TouchableOpacity
                 style={styles.inputContainer}
                 onPress={() => setShowEndPicker(true)}>
-                <Calendar size={20} color="#64748b" />
+                <Calendar size={20} color="#dc2626" />
                 <Text style={styles.input}>{endDate.toLocaleDateString()}</Text>
               </TouchableOpacity>
             </View>
@@ -535,7 +535,7 @@ const GeneralReportsScreen = () => {
               <TouchableOpacity
                 style={styles.personSelector}
                 onPress={() => setShowDrivers(!showDrivers)}>
-                <User size={20} color="#64748b" />
+                <User size={20} color="#dc2626" />
                 <Text
                   style={[
                     styles.personSelectorText,
@@ -552,7 +552,7 @@ const GeneralReportsScreen = () => {
                       setSelectedDriver(null);
                     }}
                     style={styles.clearButton}>
-                    <X size={16} color="#ef4444" />
+                    <X size={16} color="#dc2626" />
                   </TouchableOpacity>
                 )}
               </TouchableOpacity>
@@ -560,7 +560,7 @@ const GeneralReportsScreen = () => {
               <TouchableOpacity
                 style={styles.personSelector}
                 onPress={() => setShowOperators(!showOperators)}>
-                <User size={20} color="#64748b" />
+                <User size={20} color="#dc2626" />
                 <Text
                   style={[
                     styles.personSelectorText,
@@ -577,7 +577,7 @@ const GeneralReportsScreen = () => {
                       setSelectedOperator(null);
                     }}
                     style={styles.clearButton}>
-                    <X size={16} color="#ef4444" />
+                    <X size={16} color="#dc2626" />
                   </TouchableOpacity>
                 )}
               </TouchableOpacity>
@@ -588,9 +588,9 @@ const GeneralReportsScreen = () => {
               onPress={fetchTrips}
               disabled={loading}>
               {loading ? (
-                <ActivityIndicator color="#ffffff" />
+                <ActivityIndicator color="#dc2626" />
               ) : (
-                <Search size={24} color="#ffffff" />
+                <Search size={24} color="#dc2626" />
               )}
             </TouchableOpacity>
           </View>
@@ -722,7 +722,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   exportButton: {
-    backgroundColor: '#0891b2',
+    backgroundColor: 'transparent',
     width: 44,
     height: 44,
     borderRadius: 8,
@@ -819,7 +819,7 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   searchButton: {
-    backgroundColor: '#0891b2',
+    backgroundColor: 'transparent',
     width: 44,
     height: 44,
     borderRadius: 8,
@@ -884,12 +884,12 @@ const styles = StyleSheet.create({
   },
   tripDate: {
     fontSize: 13,
-    color: '#64748b',
+    color: '#dc2626',
   },
   tripPrice: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#0891b2',
+    color: '#dc2626',
   },
   tripDetails: {
     marginBottom: 8,
@@ -967,7 +967,7 @@ const styles = StyleSheet.create({
   totalAmount: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#0891b2',
+    color: '#dc2626',
   },
 });
 

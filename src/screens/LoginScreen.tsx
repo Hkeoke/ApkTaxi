@@ -125,7 +125,7 @@ const styles = StyleSheet.create({
   logoContainer: {
     width: 80,
     height: 80,
-    backgroundColor: '#2563eb',
+    backgroundColor: '#dc2626',
     borderRadius: 40,
     justifyContent: 'center',
     alignItems: 'center',
@@ -181,7 +181,7 @@ const styles = StyleSheet.create({
     color: '#1f2937',
   },
   button: {
-    backgroundColor: '#2563eb',
+    backgroundColor: '#dc2626',
     borderRadius: 12,
     paddingVertical: 16,
     marginTop: 8,

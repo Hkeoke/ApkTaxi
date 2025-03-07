@@ -147,7 +147,7 @@ const DriverMapScreen = () => {
         <TouchableOpacity
           onPress={() => setIsSidebarVisible(true)}
           style={{marginLeft: 15}}>
-          <Menu color="#0891b2" size={24} />
+          <Menu color="#dc2626" size={24} />
         </TouchableOpacity>
       ),
     });
