@@ -8,14 +8,20 @@ require Pod::Executable.execute_command('node', ['-p',
 platform :ios, min_ios_version_supported
 prepare_react_native_project!
 
-linkage = ENV['USE_FRAMEWORKS']
-if linkage != nil
-  Pod::UI.puts "Configuring Pod with #{linkage}ally linked Frameworks".green
-  use_frameworks! :linkage => linkage.to_sym
-end
-
 target 'ApkTaxi' do
   config = use_native_modules!
+
+  # Pods para mapas
+  pod 'react-native-google-maps', path: '../node_modules/react-native-maps'
+  
+  # Notificaciones
+  pod 'RNNotifee', path: '../node_modules/@notifee/react-native'
+  
+  # Geolocalización
+  pod '@react-native-community/geolocation', path: '../node_modules/@react-native-community/geolocation'
+  
+  # Sonido
+  pod 'RNSound', path: '../node_modules/react-native-sound'
 
   use_react_native!(
     :path => config[:reactNativePath],
