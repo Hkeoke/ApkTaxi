@@ -4,22 +4,7 @@
 <dict>
     <key>method</key>
     <string>development</string>
-    <key>teamID</key>
-    <string>YOUR_TEAM_ID</string>
-    <key>signingStyle</key>
-    <string>automatic</string>
-    <key>stripSwiftSymbols</key>
-    <true/>
-    <key>uploadSymbols</key>
-    <true/>
     <key>compileBitcode</key>
     <false/>
-    <key>thinning</key>
-    <string>&lt;none&gt;</string>
-    <key>provisioningProfiles</key>
-    <dict>
-        <key>com.apktaxi.app</key>
-        <string>ApkTaxi Development Profile</string>
-    </dict>
 </dict>
 </plist> 
