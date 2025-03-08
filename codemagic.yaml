@@ -9,6 +9,7 @@ workflows:
       vars:
         XCODE_WORKSPACE: 'ApkTaxi.xcworkspace'
         XCODE_SCHEME: 'ApkTaxi'
+        BUNDLE_ID: 'com.apktaxi.app'
     scripts:
       - name: Install npm dependencies
         script: |
@@ -17,13 +18,22 @@ workflows:
         script: |
           cd ios
           pod install --verbose
-      - name: Build for simulator
+      - name: Set up keychain
         script: |
-          xcodebuild build \
-            -workspace "ios/$XCODE_WORKSPACE" \
+          keychain initialize
+      - name: Set up code signing settings
+        script: |
+          xcode-project use-profiles --warn-only
+      - name: Build ipa for device
+        script: |
+          xcodebuild -workspace "ios/$XCODE_WORKSPACE" \
             -scheme "$XCODE_SCHEME" \
-            -configuration Debug \
-            -sdk iphonesimulator \
-            -destination 'platform=iOS Simulator,name=iPhone 14'
+            -configuration Release \
+            -archivePath build/ios/archive.xcarchive \
+            clean archive
+          xcodebuild -exportArchive \
+            -archivePath build/ios/archive.xcarchive \
+            -exportPath build/ios/ipa \
+            -exportOptionsPlist ios/ExportOptions.plist
     artifacts:
-      - build/ios/Build/Products/Debug-iphonesimulator/*.app
+      - build/ios/ipa/*.ipa
