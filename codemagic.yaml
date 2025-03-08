@@ -20,20 +20,17 @@ workflows:
           pod install --verbose
       - name: Build ipa for development
         script: |
-          cd ios
           xcodebuild \
-            -workspace "$XCODE_WORKSPACE" \
+            -workspace "ios/$XCODE_WORKSPACE" \
             -scheme "$XCODE_SCHEME" \
             -configuration Debug \
             -sdk iphoneos \
             -allowProvisioningUpdates \
-            -derivedDataPath build \
+            -derivedDataPath build/ios \
             build
-          cd build/Build/Products/Debug-iphoneos
+          cd build/ios/Build/Products/Debug-iphoneos
           mkdir Payload
-          cp -r *.app Payload
-          zip -r "../../../../../ApkTaxi.ipa" Payload
+          cp -r ApkTaxi.app Payload
+          zip -r "ApkTaxi.ipa" Payload
     artifacts:
-      - ApkTaxi.ipa
-      - ios/build/**/*.ipa
-      - ios/build/Build/Products/**/*.app
+      - build/ios/Build/Products/Debug-iphoneos/ApkTaxi.ipa
