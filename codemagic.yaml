@@ -10,7 +10,6 @@ workflows:
         XCODE_WORKSPACE: 'ApkTaxi.xcworkspace'
         XCODE_SCHEME: 'ApkTaxi'
         BUNDLE_ID: 'com.apktaxi.app'
-        #DEVELOPMENT_TEAM: 'YOUR_TEAM_ID' # Este es opcional para desarrollo
     scripts:
       - name: Install npm dependencies
         script: |
@@ -21,17 +20,20 @@ workflows:
           pod install --verbose
       - name: Build ipa for development
         script: |
+          cd ios
           xcodebuild \
-            -workspace "ios/$XCODE_WORKSPACE" \
+            -workspace "$XCODE_WORKSPACE" \
             -scheme "$XCODE_SCHEME" \
             -configuration Debug \
             -sdk iphoneos \
             -allowProvisioningUpdates \
-            -derivedDataPath build/ios \
+            -derivedDataPath build \
             build
-          cd build/ios/Build/Products/Debug-iphoneos
+          cd build/Build/Products/Debug-iphoneos
           mkdir Payload
-          cp -r ApkTaxi.app Payload
-          zip -r "ApkTaxi.ipa" Payload
+          cp -r *.app Payload
+          zip -r "../../../../../ApkTaxi.ipa" Payload
     artifacts:
-      - build/ios/Build/Products/Debug-iphoneos/ApkTaxi.ipa
+      - ApkTaxi.ipa
+      - ios/build/**/*.ipa
+      - ios/build/Build/Products/**/*.app
