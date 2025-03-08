@@ -18,6 +18,9 @@ workflows:
         script: |
           cd ios
           pod install --verbose
+      - name: Set up code signing settings
+        script: |
+          xcode-project use-profiles --warn-only
       - name: Build ipa for development
         script: |
           xcodebuild \
@@ -26,6 +29,9 @@ workflows:
             -configuration Debug \
             -sdk iphoneos \
             -allowProvisioningUpdates \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
             -derivedDataPath build/ios \
             build
           cd build/ios/Build/Products/Debug-iphoneos
