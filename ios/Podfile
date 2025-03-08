@@ -8,39 +8,32 @@ require Pod::Executable.execute_command('node', ['-p',
 require_relative '../node_modules/react-native/scripts/react_native_pods'
 require_relative '../node_modules/@react-native-community/cli-platform-ios/native_modules'
 
+# iOS deployment target
 platform :ios, min_ios_version_supported
 prepare_react_native_project!
 
 target 'ApkTaxi' do
   config = use_native_modules!
+  
+  # React Native
   use_react_native!(
     :path => config[:reactNativePath],
     :hermes_enabled => true
   )
 
-  # Mapas
+  # Dependencias específicas
+  pod 'GoogleMaps'
   pod 'react-native-google-maps', :path => '../node_modules/react-native-maps'
-  
-  # Notificaciones
-  pod 'RNNotifee', :path => '../node_modules/@notifee/react-native'
-  
-  # Geolocalización
   pod 'react-native-geolocation', :path => '../node_modules/@react-native-community/geolocation'
-  
-  # Sonido
+  pod 'RNNotifee', :path => '../node_modules/@notifee/react-native'
   pod 'RNSound', :path => '../node_modules/react-native-sound'
 
   post_install do |installer|
     react_native_post_install(installer)
-    __apply_Xcode_12_5_M1_post_install_workaround(installer)
-    
     installer.pods_project.targets.each do |target|
       target.build_configurations.each do |config|
         config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
       end
     end
   end
-
-  permissions_path = '../node_modules/react-native-permissions/ios'
-  pod 'Permission-Notifications', :path => "#{permissions_path}/Notifications"
 end
