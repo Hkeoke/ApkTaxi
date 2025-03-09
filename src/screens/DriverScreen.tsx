@@ -615,7 +615,7 @@ const DriverHomeScreen: React.FC<{
 
     return bearing;
   };
-  /*const calculateDistance = (
+  const calculateDistance = (
     lat1: number,
     lon1: number,
     lat2: number,
@@ -638,7 +638,7 @@ const DriverHomeScreen: React.FC<{
   };
 
   // Función para verificar si está dentro del radio permitido (comentada temporalmente)
-  /*const isWithinAllowedDistance = (
+  const isWithinAllowedDistance = (
     currentLat: number,
     currentLon: number,
     targetLat: number,
@@ -647,7 +647,7 @@ const DriverHomeScreen: React.FC<{
   ): boolean => {
     const distance = calculateDistance(currentLat, currentLon, targetLat, targetLon);
     return distance <= maxDistance;
-  };*/
+  };
 
   // Modificar el manejador de llegada al punto de recogida
   const handleArrivalAtPickup = async () => {
@@ -655,7 +655,7 @@ const DriverHomeScreen: React.FC<{
       if (!activeTrip?.id || !position) return;
 
       // Verificación de distancia comentada temporalmente
-      /*const isNearPickup = isWithinAllowedDistance(
+      const isNearPickup = isWithinAllowedDistance(
         position.latitude,
         position.longitude,
         activeTrip.origin_lat,
@@ -668,7 +668,7 @@ const DriverHomeScreen: React.FC<{
           'Debes estar a menos de 100 metros del punto de recogida para marcar tu llegada.',
         );
         return;
-      }*/
+      }
 
       await tripRequestService.updateTripStatus(
         activeTrip.id,
@@ -707,7 +707,7 @@ const DriverHomeScreen: React.FC<{
       if (!activeTrip?.id || !position) return;
 
       // Verificación de distancia comentada temporalmente
-      /*const isNearDestination = isWithinAllowedDistance(
+      const isNearDestination = isWithinAllowedDistance(
         position.latitude,
         position.longitude,
         activeTrip.destination_lat,
@@ -720,7 +720,7 @@ const DriverHomeScreen: React.FC<{
           'Debes estar a menos de 100 metros del punto de destino para finalizar el viaje.',
         );
         return;
-      }*/
+      }
 
       await tripRequestService.updateTripStatus(activeTrip.id, 'completed');
       const commission = activeTrip.price * 0.1;
@@ -734,6 +734,13 @@ const DriverHomeScreen: React.FC<{
         user.id,
       );
 
+      // Resetear estados
+      setActiveTrip(null);
+      setTripPhase(null);
+      setCurrentRoute(null);
+      setPendingRequests([]);
+      setRejectedRequests([]);
+
       // Verificar si el balance quedó negativo
       if (updatedProfile.balance < 0) {
         // Desactivar conductor (is_on_duty = false) y desactivar usuario (active = false)
@@ -742,40 +749,15 @@ const DriverHomeScreen: React.FC<{
         setIsOnDuty(false);
 
         Alert.alert(
-          'Cuenta Suspendida',
-          'Tu cuenta ha sido suspendida por balance negativo. Por favor, contacta al administrador para reactivar tu cuenta.',
-          [
-            {
-              text: 'Entendido',
-              onPress: () => {
-                // Cerrar sesión del usuario
-                /* navigation.reset({
-                  index: 0,
-                  routes: [{name: 'Login'}],
-                });*/
-              },
-            },
-          ],
+          'Viaje Completado - Cuenta Suspendida',
+          `Viaje completado exitosamente.\nSe ha descontado una comisión de $${commission.toFixed(2)}.\n\nTu cuenta ha sido suspendida por balance negativo. Por favor, contacta al administrador para reactivar tu cuenta.`
+        );
+      } else {
+        Alert.alert(
+          'Viaje Completado',
+          `Viaje completado exitosamente.\nSe ha descontado una comisión de $${commission.toFixed(2)}`
         );
       }
-
-      // Resetear estados
-      setActiveTrip(null);
-      setTripPhase(null);
-      setCurrentRoute(null);
-      setPendingRequests([]);
-      setRejectedRequests([]);
-
-      Alert.alert(
-        'Viaje Completado',
-        `Viaje completado exitosamente.\nSe ha descontado una comisión de $${commission.toFixed(
-          2,
-        )}${
-          updatedProfile.balance < 0
-            ? '\n\nTu cuenta ha sido suspendida por balance negativo.'
-            : ''
-        }`,
-      );
     } catch (error) {
       console.error('Error completing trip:', error);
       Alert.alert('Error', 'No se pudo completar el viaje');
@@ -901,6 +883,22 @@ const DriverHomeScreen: React.FC<{
   const toggleDutyStatus = async () => {
     try {
       const newStatus = !isOnDuty;
+      
+      // Si está intentando ponerse en servicio, verificar el balance
+      if (newStatus) {
+        // Obtener el perfil actualizado para verificar el balance
+        const driverProfile = await driverService.getDriverProfile(user.id);
+        
+        // Si el balance es negativo, no permitir activar el servicio
+        if (driverProfile.balance < 0) {
+          Alert.alert(
+            'Balance Negativo',
+            'No puedes ponerte en servicio con un balance negativo. Por favor, contacta al administrador para recargar tu cuenta.',
+          );
+          return;
+        }
+      }
+      
       await driverService.updateDriverStatus(user.id, newStatus);
       setIsOnDuty(newStatus);
 
