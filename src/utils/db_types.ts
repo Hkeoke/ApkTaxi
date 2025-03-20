@@ -54,6 +54,7 @@ export interface Trip {
   status: TripStatus;
   price: number;
   completed_at?: string;
+  passenger_phone: string;
 }
 
 export type BalanceOperationType = 'recarga' | 'descuento' | 'viaje';
@@ -66,4 +67,21 @@ export interface BalanceHistory {
   description: string;
   created_by: string;
   created_at: string;
+}
+
+export interface TripRequest {
+  id: string;
+  created_at: string;
+  origin: string;
+  destination: string;
+  origin_lat: number;
+  origin_lng: number;
+  destination_lat: number;
+  destination_lng: number;
+  price: number;
+  status: string;
+  created_by: string;
+  vehicle_type: string;
+  search_radius: number;
+  notified_drivers?: string[];
 }

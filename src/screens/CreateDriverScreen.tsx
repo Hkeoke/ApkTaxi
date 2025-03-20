@@ -12,7 +12,7 @@ import {
   Platform,
   SafeAreaView,
 } from 'react-native';
-import {User, Phone, Truck, Bike, KeyRound} from 'lucide-react-native';
+import {User, Phone, Truck, Bike, KeyRound, Star} from 'lucide-react-native';
 import {driverService} from '../services/api';
 
 interface DriverForm {
@@ -22,6 +22,7 @@ interface DriverForm {
   vehicle: string;
   vehicle_type: '2_ruedas' | '4_ruedas';
   pin: string;
+  is_special: boolean;
 }
 
 const CreateDriverScreen = ({navigation}: {navigation: any}) => {
@@ -33,6 +34,7 @@ const CreateDriverScreen = ({navigation}: {navigation: any}) => {
     vehicle: '',
     vehicle_type: '4_ruedas',
     pin: '',
+    is_special: false,
   });
 
   const handleSubmit = async () => {
@@ -44,6 +46,7 @@ const CreateDriverScreen = ({navigation}: {navigation: any}) => {
         vehicle: form.vehicle,
         vehicle_type: form.vehicle_type,
         pin: form.pin,
+        is_special: form.is_special,
       });
 
       if (!result.success) {
@@ -218,6 +221,25 @@ const CreateDriverScreen = ({navigation}: {navigation: any}) => {
             </View>
           </View>
 
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Conductor Especial</Text>
+            <TouchableOpacity
+              style={styles.specialDriverButton}
+              onPress={() => setForm(prev => ({...prev, is_special: !prev.is_special}))}>
+              <Star
+                size={24}
+                fill={form.is_special ? '#dc2626' : 'none'}
+                color={form.is_special ? '#dc2626' : '#64748b'}
+              />
+              <Text style={[
+                styles.specialDriverText,
+                form.is_special && styles.specialDriverTextSelected
+              ]}>
+                Conductor Prioritario
+              </Text>
+            </TouchableOpacity>
+          </View>
+
           <TouchableOpacity
             style={[
               styles.submitButton,
@@ -358,6 +380,24 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 15,
     fontWeight: '600',
+  },
+  specialDriverButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#ffffff',
+    gap: 8,
+  },
+  specialDriverText: {
+    fontSize: 14,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+  specialDriverTextSelected: {
+    color: '#dc2626',
   },
 });
 

@@ -7,7 +7,12 @@ import {
   Role,
   TripStatus,
   BalanceOperationType,
+  TripRequest,
 } from '../utils/db_types';
+import {
+  RealtimeChannel,
+  REALTIME_SUBSCRIBE_STATES,
+} from '@supabase/supabase-js';
 
 // Agregar al inicio del archivo junto con las otras interfaces
 interface Stop {
@@ -19,128 +24,6 @@ interface Stop {
 
 // En tripService
 export const tripRequestService = {
-  async createBroadcastRequest(requestData: any) {
-    const {operator_id, stops, ...rest} = requestData;
-
-    try {
-      // Primero crear la solicitud de viaje
-      const {data: tripRequest, error: tripError} = await supabase
-        .from('trip_requests')
-        .insert([
-          {
-            ...rest,
-            created_by: operator_id,
-            status: 'broadcasting',
-          },
-        ])
-        .select()
-        .single();
-
-      if (tripError) throw tripError;
-
-      // Si hay paradas, las insertamos
-      if (stops && stops.length > 0) {
-        const stopsToInsert = stops.map((stop: Stop, index: number) => ({
-          trip_request_id: tripRequest.id,
-          name: stop.name,
-          latitude: stop.latitude,
-          longitude: stop.longitude,
-          order_index: index,
-        }));
-
-        const {error: stopsError} = await supabase
-          .from('trip_stops')
-          .insert(stopsToInsert);
-
-        if (stopsError) throw stopsError;
-      }
-
-      return tripRequest;
-    } catch (error) {
-      console.error('Error en createBroadcastRequest:', error);
-      throw error;
-    }
-  },
-
-  // Modificar el método para obtener solicitudes pendientes
-  async getDriverPendingRequests(driverId: string, vehicleType: string) {
-    try {
-      console.log('Iniciando getDriverPendingRequests:', {
-        driverId,
-        vehicleType,
-      });
-
-      // Primero obtenemos la ubicación actual del chofer
-      const {data: driverData, error: driverError} = await supabase
-        .from('driver_profiles')
-        .select('latitude, longitude, vehicle_type')
-        .eq('id', driverId)
-        .single();
-
-      if (driverError) {
-        console.error('Error obteniendo datos del conductor:', driverError);
-        throw driverError;
-      }
-
-      // Modificar la consulta de solicitudes para incluir más información
-      const {data: requests, error: requestsError} = await supabase
-        .from('trip_requests')
-        .select(
-          `
-          *,
-          created_by,
-          created_at,
-          trip_stops (
-            id,
-            name,
-            latitude,
-            longitude,
-            order_index
-          )
-        `,
-        )
-        .eq('status', 'broadcasting')
-        .eq('vehicle_type', vehicleType)
-        .order('created_at', {ascending: false});
-
-      if (requestsError) {
-        console.error('Error obteniendo solicitudes:', requestsError);
-        throw requestsError;
-      }
-
-      console.log('Solicitudes sin filtrar:', requests);
-
-      // Filtrar solicitudes por radio de búsqueda
-      const nearbyRequests = requests?.filter(request => {
-        const distance = this.calculateDistance(
-          Number(driverData.latitude),
-          Number(driverData.longitude),
-          Number(request.origin_lat),
-          Number(request.origin_lng),
-        );
-
-        console.log('Distancia a solicitud:', {
-          requestId: request.id,
-          distance,
-          searchRadius: request.search_radius,
-          isNearby: distance <= request.search_radius,
-        });
-
-        return distance <= request.search_radius;
-      });
-
-      console.log(
-        'Solicitudes filtradas por distancia:',
-        nearbyRequests?.length || 0,
-      );
-
-      return nearbyRequests || [];
-    } catch (error) {
-      console.error('Error completo en getDriverPendingRequests:', error);
-      return [];
-    }
-  },
-
   calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
     const R = 6371000; // Radio de la Tierra en metros
     const phi1 = (lat1 * Math.PI) / 180;
@@ -155,9 +38,176 @@ export const tripRequestService = {
         Math.sin(deltaLambda / 2) *
         Math.sin(deltaLambda / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    const d = R * c;
+    return R * c; // Distancia en metros
+  },
 
-    return d;
+  async createBroadcastRequest(requestData: {
+    operator_id: string;
+    origin: string;
+    destination: string;
+    price: number;
+    origin_lat: number;
+    origin_lng: number;
+    destination_lat: number;
+    destination_lng: number;
+    search_radius: number;
+    observations: string;
+    vehicle_type: string;
+    passenger_phone: string;
+    status: string;
+    stops: Array<{
+      name: string;
+      latitude: number;
+      longitude: number;
+    }>;
+  }) {
+    try {
+      // Primero crear la solicitud de viaje
+      const {data: tripRequest, error: tripRequestError} = await supabase
+        .from('trip_requests')
+        .insert({
+          created_by: requestData.operator_id,
+          origin: requestData.origin,
+          destination: requestData.destination,
+          price: requestData.price,
+          origin_lat: requestData.origin_lat,
+          origin_lng: requestData.origin_lng,
+          destination_lat: requestData.destination_lat,
+          destination_lng: requestData.destination_lng,
+          search_radius: requestData.search_radius,
+          observations: requestData.observations,
+          vehicle_type: requestData.vehicle_type,
+          passenger_phone: requestData.passenger_phone,
+          status: requestData.status,
+        })
+        .select()
+        .single();
+
+      if (tripRequestError) throw tripRequestError;
+
+      // Si hay paradas, insertarlas
+      if (requestData.stops && requestData.stops.length > 0) {
+        const stopsToInsert = requestData.stops.map((stop, index) => ({
+          trip_request_id: tripRequest.id,
+          name: stop.name,
+          latitude: stop.latitude,
+          longitude: stop.longitude,
+          order_index: index + 1,
+        }));
+
+        const {error: stopsError} = await supabase
+          .from('trip_stops')
+          .insert(stopsToInsert);
+
+        if (stopsError) throw stopsError;
+      }
+
+      return tripRequest;
+    } catch (error) {
+      console.error('Error creating broadcast request:', error);
+      throw error;
+    }
+  },
+
+  async resendCancelledTrip(tripId: string) {
+    try {
+      // Obtener detalles del viaje cancelado
+      const {data: trip, error: tripError} = await supabase
+        .from('trips')
+        .select('*')
+        .eq('id', tripId)
+        .single();
+
+      if (tripError) throw tripError;
+
+      // Crear nueva solicitud con los datos del viaje cancelado
+      const {data: newRequest, error: requestError} = await supabase
+        .from('trip_requests')
+        .insert([
+          {
+            origin: trip.origin,
+            destination: trip.destination,
+            origin_lat: trip.origin_lat,
+            origin_lng: trip.origin_lng,
+            destination_lat: trip.destination_lat,
+            destination_lng: trip.destination_lng,
+            price: trip.price,
+            created_by: trip.created_by,
+            status: 'broadcasting',
+            vehicle_type: trip.vehicle_type,
+            passenger_phone: trip.passenger_phone,
+            cancelled_trip_id: tripId, // Referencia al viaje cancelado
+          },
+        ])
+        .select()
+        .single();
+
+      if (requestError) throw requestError;
+      return newRequest;
+    } catch (error) {
+      console.error('Error resending cancelled trip:', error);
+      throw error;
+    }
+  },
+
+  async getDriverPendingRequests(driverId: string, vehicleType: string) {
+    try {
+      // Primero obtener el perfil del conductor con su ubicación
+      const {data: driverProfile, error: driverError} = await supabase
+        .from('driver_profiles')
+        .select('latitude, longitude, is_special')
+        .eq('id', driverId)
+        .single();
+
+      if (driverError) {
+        console.error('Error obteniendo perfil del conductor:', driverError);
+        return [];
+      }
+
+      if (!driverProfile?.latitude || !driverProfile?.longitude) {
+        console.error('El conductor no tiene ubicación registrada');
+        return [];
+      }
+
+      // Obtener solicitudes activas que coincidan con el tipo de vehículo
+      const {data: requests, error: requestError} = await supabase
+        .from('trip_requests')
+        .select('*')
+        .eq('status', 'broadcasting')
+        .eq('vehicle_type', vehicleType)
+        .not('notified_drivers', 'cs', `{${driverId}}`)
+        .lte('current_radius', 15000)
+        .gt('expires_at', new Date().toISOString());
+
+      if (requestError) {
+        console.error('Error obteniendo solicitudes:', requestError);
+        return [];
+      }
+
+      // Filtrar solicitudes basado en la distancia usando this.calculateDistance
+      const nearbyRequests = requests?.filter(request => {
+        const distance = this.calculateDistance(
+          driverProfile.latitude,
+          driverProfile.longitude,
+          request.origin_lat,
+          request.origin_lng,
+        );
+        return distance <= request.current_radius;
+      });
+
+      // Ordenar por prioridad
+      return nearbyRequests?.sort((a, b) => {
+        if (driverProfile.is_special) {
+          return -1;
+        }
+        const timeA = new Date(a.created_at).getTime();
+        const timeB = new Date(b.created_at).getTime();
+        return timeB - timeA;
+      });
+    } catch (error) {
+      console.error('Error en getDriverPendingRequests:', error);
+      return [];
+    }
   },
 
   async createRequest(requestData: {
@@ -240,23 +290,19 @@ export const tripRequestService = {
     }
   },
 
-  async updateTripStatus(tripId: string, status: TripStatus) {
-    const updates: Partial<Trip> = {
-      status,
-      ...(status === 'completed'
-        ? {completed_at: new Date().toISOString()}
-        : {}),
-    };
+  async updateTripStatus(tripId: string, status: string) {
+    try {
+      const {data, error} = await supabase
+        .from('trips')
+        .update({status: status})
+        .eq('id', tripId);
 
-    const {data, error} = await supabase
-      .from('trips')
-      .update(updates)
-      .eq('id', tripId)
-      .select('*')
-      .single();
-
-    if (error) throw error;
-    return data as Trip;
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error updating trip status:', error);
+      throw error;
+    }
   },
 
   async updateTripRequest(requestId: string, updates: any) {
@@ -320,6 +366,216 @@ export const tripRequestService = {
       if (error) throw error;
     } catch (error) {
       console.error('Error releasing request:', error);
+    }
+  },
+
+  subscribeToTripUpdates(
+    tripId: string,
+    onUpdate: (trip: Trip) => void,
+    onError: (error: any) => void,
+  ): RealtimeChannel {
+    try {
+      const channel = supabase
+        .channel(`trip_updates_${tripId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'trips',
+            filter: `id=eq.${tripId}`,
+          },
+          payload => {
+            console.log('Trip update received:', payload);
+            if (payload.new) {
+              onUpdate(payload.new as Trip);
+            }
+          },
+        )
+        .subscribe(status => {
+          if (status === REALTIME_SUBSCRIBE_STATES.SUBSCRIBED) {
+            console.log('Subscription status:', status);
+          } else if (status === REALTIME_SUBSCRIBE_STATES.CLOSED) {
+            onError('Error subscribing to trip updates');
+          }
+        });
+
+      return channel;
+    } catch (error) {
+      console.error('Error setting up subscription:', error);
+      throw error;
+    }
+  },
+
+  unsubscribeFromTripUpdates(channel: RealtimeChannel) {
+    try {
+      supabase.removeChannel(channel);
+    } catch (error) {
+      console.error('Error removing subscription:', error);
+    }
+  },
+
+  async cancelTrip(tripId: string, reason: string) {
+    try {
+      const {data, error} = await supabase
+        .from('trips')
+        .update({
+          status: 'cancelled',
+          cancellation_reason: reason,
+          cancelled_at: new Date().toISOString(),
+        })
+        .eq('id', tripId)
+        .select('*')
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error cancelling trip:', error);
+      throw error;
+    }
+  },
+
+  subscribeToTripUpdatesForOperator(
+    operatorId: string,
+    onUpdate: (trip: Trip) => void,
+    onError: (error: any) => void,
+  ): RealtimeChannel {
+    try {
+      const channel = supabase
+        .channel(`operator_trips_${operatorId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'trips',
+            filter: `created_by=eq.${operatorId}`,
+          },
+          payload => {
+            if (payload.new) {
+              onUpdate(payload.new as Trip);
+            }
+          },
+        )
+        .subscribe(status => {
+          if (status === 'SUBSCRIBED') {
+            console.log('Suscripción exitosa a actualizaciones de viajes');
+          } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+            onError(new Error('Error en la suscripción'));
+          }
+        });
+
+      return channel;
+    } catch (error) {
+      console.error('Error al crear suscripción:', error);
+      throw error;
+    }
+  },
+
+  async broadcastRequest(requestId: string) {
+    try {
+      // Primero obtener los detalles de la solicitud
+      const {data: request, error: requestError} = await supabase
+        .from('trip_requests')
+        .select('*')
+        .eq('id', requestId)
+        .single();
+
+      if (requestError) throw requestError;
+
+      if (!request) {
+        throw new Error('Solicitud no encontrada');
+      }
+
+      // Obtener conductores especiales disponibles
+      const {data: specialDrivers, error: specialError} = await supabase.rpc(
+        'get_available_drivers_in_radius',
+        {
+          p_request_id: requestId,
+          p_latitude: request.origin_lat,
+          p_longitude: request.origin_lng,
+          p_radius: request.search_radius,
+          p_vehicle_type: request.vehicle_type,
+          p_special_only: true,
+        },
+      );
+
+      if (specialError) throw specialError;
+
+      if (specialDrivers && specialDrivers.length > 0) {
+        // Actualizar la lista de conductores notificados
+        await supabase
+          .from('trip_requests')
+          .update({
+            notified_drivers: supabase.rpc('array_append', {
+              arr: request.notified_drivers || [],
+              el: specialDrivers.map((d: {driver_id: string}) => d.driver_id),
+            }),
+          })
+          .eq('id', requestId);
+
+        // Esperar 10 segundos antes de notificar al resto
+        await new Promise(resolve => setTimeout(resolve, 10000));
+      }
+
+      // Obtener conductores regulares disponibles
+      const {data: regularDrivers, error: regularError} = await supabase.rpc(
+        'get_available_drivers_in_radius',
+        {
+          p_request_id: requestId,
+          p_latitude: request.origin_lat,
+          p_longitude: request.origin_lng,
+          p_radius: request.search_radius,
+          p_vehicle_type: request.vehicle_type,
+          p_special_only: false,
+        },
+      );
+
+      if (regularError) throw regularError;
+
+      if (regularDrivers && regularDrivers.length > 0) {
+        // Actualizar la lista de conductores notificados
+        await supabase
+          .from('trip_requests')
+          .update({
+            notified_drivers: supabase.rpc('array_append', {
+              arr: request.notified_drivers || [],
+              el: regularDrivers.map((d: {driver_id: string}) => d.driver_id),
+            }),
+          })
+          .eq('id', requestId);
+      }
+
+      return {
+        success: true,
+        specialDriversCount: specialDrivers?.length || 0,
+        regularDriversCount: regularDrivers?.length || 0,
+      };
+    } catch (error) {
+      console.error('Error broadcasting request:', error);
+      throw error;
+    }
+  },
+
+  async getTripById(tripId: string) {
+    try {
+      const {data, error} = await supabase
+        .from('trips')
+        .select(
+          `
+          *,
+          trip_stops(*)
+        `,
+        )
+        .eq('id', tripId)
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error fetching trip by ID:', error);
+      throw error;
     }
   },
 };
@@ -537,22 +793,39 @@ export const driverService = {
     return data;
   },
 
-  async createDriver(driverData: {
+  async createDriver({
+    first_name,
+    last_name,
+    phone_number,
+    vehicle,
+    vehicle_type,
+    pin,
+    is_special,
+  }: {
     first_name: string;
     last_name: string;
     phone_number: string;
     vehicle: string;
     vehicle_type: '2_ruedas' | '4_ruedas';
     pin: string;
+    is_special: boolean;
   }) {
     try {
-      console.log('Iniciando creación de conductor:', driverData);
+      console.log('Iniciando creación de conductor:', {
+        first_name,
+        last_name,
+        phone_number,
+        vehicle,
+        vehicle_type,
+        pin,
+        is_special,
+      });
 
       // Primero verificamos si ya existe un usuario con ese número de teléfono
       const {data: existingUser} = await supabase
         .from('users')
         .select('*')
-        .eq('phone_number', driverData.phone_number)
+        .eq('phone_number', phone_number)
         .single();
 
       if (existingUser) {
@@ -563,8 +836,8 @@ export const driverService = {
       const {data: userData, error: userError} = await supabase
         .from('users')
         .insert({
-          phone_number: driverData.phone_number,
-          pin: driverData.pin,
+          phone_number: phone_number,
+          pin: pin,
           role: 'chofer',
           active: true,
         })
@@ -588,11 +861,12 @@ export const driverService = {
         .from('driver_profiles')
         .insert({
           id: userData.id,
-          first_name: driverData.first_name,
-          last_name: driverData.last_name,
-          phone_number: driverData.phone_number,
-          vehicle: driverData.vehicle,
-          vehicle_type: driverData.vehicle_type,
+          first_name,
+          last_name,
+          phone_number,
+          vehicle,
+          vehicle_type,
+          is_special,
           license_number: `LIC-${Date.now()}-${Math.random()
             .toString(36)
             .substring(2, 7)}`,
@@ -922,13 +1196,27 @@ export const operatorService = {
 
   async createOperator(operatorData: any) {
     try {
-      // Crear usuario primero
-      const {data: userData, error: userError} = await supabase.auth.signUp({
-        phone: operatorData.phone_number,
-        password: operatorData.pin,
-      });
+      // Primero crear el usuario
+      const {data: userData, error: userError} = await supabase
+        .from('users')
+        .insert([
+          {
+            phone_number: operatorData.phone_number,
+            pin: operatorData.pin,
+            role: 'operador',
+            active: true,
+          },
+        ])
+        .select()
+        .single();
 
-      if (userError) throw userError;
+      if (userError) {
+        console.error('Error al crear usuario:', userError);
+        return {
+          success: false,
+          error: userError.message,
+        };
+      }
 
       // Generar identity_card automáticamente
       const identity_card = `OP${Date.now().toString().slice(-6)}`;
@@ -938,21 +1226,38 @@ export const operatorService = {
         .from('operator_profiles')
         .insert([
           {
-            id: userData.user?.id,
+            id: userData.id,
             first_name: operatorData.first_name,
             last_name: operatorData.last_name,
-            identity_card, // Usar el identity_card generado
+            identity_card,
           },
         ])
         .select()
         .single();
 
-      if (operatorError) throw operatorError;
+      if (operatorError) {
+        // Si falla la creación del perfil, eliminar el usuario creado
+        await supabase.from('users').delete().eq('id', userData.id);
+        console.error('Error al crear perfil:', operatorError);
+        return {
+          success: false,
+          error: operatorError.message,
+        };
+      }
 
-      return {success: true, data: operatorProfile};
+      return {
+        success: true,
+        data: {
+          ...userData,
+          operator_profile: operatorProfile,
+        },
+      };
     } catch (error) {
-      console.error('Error creating operator:', error);
-      return {success: false, error: 'Error al crear el operador'};
+      console.error('Error en createOperator:', error);
+      return {
+        success: false,
+        error: 'Error al crear el operador',
+      };
     }
   },
 

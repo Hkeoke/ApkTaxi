@@ -177,7 +177,7 @@ const DriverMapScreen = () => {
         ref={mapRef}
         style={styles.map}
         provider={PROVIDER_DEFAULT}
-        customMapStyle={mapStyle}
+        //customMapStyle={mapStyle}
         region={region}>
         {drivers.map(driver => (
           <Marker

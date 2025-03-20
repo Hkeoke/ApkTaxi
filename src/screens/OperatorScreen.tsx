@@ -17,6 +17,10 @@ import MapView, {Marker, Circle, PROVIDER_DEFAULT} from 'react-native-maps';
 import {X, Car, Bike, Menu, Plus} from 'lucide-react-native';
 import Sidebar from '../components/Sidebar';
 import {useNavigation} from '@react-navigation/native';
+import notifee from '@notifee/react-native';
+import {AndroidImportance} from '@notifee/react-native';
+import {RealtimeChannel} from '@supabase/supabase-js';
+import {Trip} from '../utils/db_types'; // Agregar al inicio con las otras importaciones
 
 //import {Car, Phone, Star, Clock, X} from 'lucide-react-native';
 import {driverService, tripRequestService} from '../services/api';
@@ -90,6 +94,8 @@ const OperatorHomeScreen: React.FC<OperatorScreenProps> = ({
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
   const [showRequestForm, setShowRequestForm] = useState(false);
   const [viewMode, setViewMode] = useState(mode);
+  const [tripSubscription, setTripSubscription] =
+    useState<RealtimeChannel | null>(null);
 
   const [region, setRegion] = useState({
     latitude: 23.1136,
@@ -582,12 +588,74 @@ const OperatorHomeScreen: React.FC<OperatorScreenProps> = ({
     return '#0891b2';
   };
 
+  // Agregar función para manejar actualizaciones de viajes
+  const handleTripUpdate = async (updatedTrip: Trip) => {
+    if (updatedTrip.status === 'cancelled') {
+      // Mostrar notificación push
+      await notifee.displayNotification({
+        title: '¡Viaje Cancelado!',
+        body: `El viaje ${updatedTrip.id} ha sido cancelado por el conductor`,
+        android: {
+          channelId: 'trip_updates',
+          pressAction: {
+            id: 'default',
+          },
+          importance: AndroidImportance.HIGH,
+          sound: 'notification_sound',
+        },
+        ios: {
+          sound: 'notification_sound.wav',
+        },
+      });
+    }
+  };
+
+  // Actualizar el useEffect para la suscripción
+  useEffect(() => {
+    let subscription: RealtimeChannel | null = null;
+
+    const setupSubscription = async () => {
+      try {
+        if (user?.id) {
+          // Crear canal para notificaciones en Android
+          await notifee.createChannel({
+            id: 'trip_updates',
+            name: 'Actualizaciones de Viajes',
+            importance: AndroidImportance.HIGH,
+            sound: 'notification_sound',
+          });
+
+          // Suscribirse a actualizaciones de viajes
+          subscription = tripRequestService.subscribeToTripUpdatesForOperator(
+            user.id,
+            handleTripUpdate,
+            error => {
+              console.error('Error en suscripción:', error);
+            },
+          );
+
+          setTripSubscription(subscription);
+        }
+      } catch (error) {
+        console.error('Error configurando suscripción:', error);
+      }
+    };
+
+    setupSubscription();
+
+    return () => {
+      if (subscription) {
+        tripRequestService.unsubscribeFromTripUpdates(subscription);
+      }
+    };
+  }, [user?.id]);
+
   return (
     <View style={styles.container}>
       <MapView
         ref={mapRef}
         style={styles.map}
-        customMapStyle={mapStyle}
+        //customMapStyle={mapStyle}
         initialRegion={{
           latitude: 23.1136,
           longitude: -82.3666,
@@ -823,7 +891,7 @@ const OperatorHomeScreen: React.FC<OperatorScreenProps> = ({
 
           <MapView
             style={styles.modalMap}
-            customMapStyle={mapStyle}
+            //customMapStyle={mapStyle}
             provider={PROVIDER_DEFAULT}
             region={region}
             onPress={handleMapPress}

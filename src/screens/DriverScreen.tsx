@@ -30,7 +30,7 @@ import Geolocation from '@react-native-community/geolocation';
 import {driverService, tripRequestService} from '../services/api';
 import {
   MapPinIcon,
-  Navigation2Icon,
+  Navigation2,
   FlagIcon,
   UserIcon,
   Menu,
@@ -38,11 +38,14 @@ import {
   MessageSquareIcon,
   CheckIcon,
   XIcon,
+  X,
 } from 'lucide-react-native';
 import Sidebar from '../components/Sidebar';
 import notifee, {AndroidImportance} from '@notifee/react-native';
 import Sound from 'react-native-sound';
 import BackgroundService from 'react-native-background-actions';
+import {Trip} from '../utils/db_types';
+import {RealtimeChannel} from '@supabase/supabase-js';
 
 interface Stop {
   id: string;
@@ -67,22 +70,6 @@ interface TripRequest {
   created_by: string;
   observations?: string;
   trip_stops?: Stop[];
-}
-
-interface Trip {
-  id: string;
-  origin: string;
-  destination: string;
-  origin_lat: number;
-  origin_lng: number;
-  destination_lat: number;
-  destination_lng: number;
-  price: number;
-  status: string;
-  driver_id?: string;
-  created_by: string;
-  search_radius: number;
-  passenger_phone: string;
 }
 
 interface Route {
@@ -131,6 +118,8 @@ const DriverHomeScreen: React.FC<{
   const [rejectedRequests, setRejectedRequests] = useState<string[]>([]);
   const [sound, setSound] = useState<Sound | null>(null);
   const [notificationId, setNotificationId] = useState<string | null>(null);
+  const [tripSubscription, setTripSubscription] =
+    useState<RealtimeChannel | null>(null);
 
   const calculateRoute = async (
     start: {latitude: number; longitude: number},
@@ -238,6 +227,52 @@ const DriverHomeScreen: React.FC<{
       }, 30000);
     });
   };
+  const handleTripUpdate = (updatedTrip: Trip) => {
+    if (updatedTrip.status === 'cancelled') {
+      // Detener alertas y notificaciones si hay alguna activa
+      stopAlerts();
+
+      // Mostrar alerta al usuario con mensaje genérico
+      Alert.alert('Viaje Cancelado', 'El viaje ha sido cancelado.', [
+        {
+          text: 'OK',
+          onPress: () => {
+            // Resetear estados
+            setActiveTrip(null);
+            setTripPhase(null);
+            setCurrentRoute(null);
+            setPendingRequests([]);
+          },
+        },
+      ]);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTrip?.id) {
+      // Suscribirse a actualizaciones del viaje
+      const subscription = tripRequestService.subscribeToTripUpdates(
+        activeTrip.id,
+        (trip: Trip) => handleTripUpdate(trip),
+        error => {
+          console.error('Error en suscripción:', error);
+          Alert.alert(
+            'Error',
+            'No se pueden recibir actualizaciones del viaje',
+          );
+        },
+      );
+
+      setTripSubscription(subscription);
+
+      // Cleanup al desmontar
+      return () => {
+        if (subscription) {
+          tripRequestService.unsubscribeFromTripUpdates(subscription);
+        }
+      };
+    }
+  }, [activeTrip?.id]);
 
   const setupSound = () => {
     Sound.setCategory('Playback');
@@ -645,7 +680,12 @@ const DriverHomeScreen: React.FC<{
     targetLon: number,
     maxDistance: number = 100,
   ): boolean => {
-    const distance = calculateDistance(currentLat, currentLon, targetLat, targetLon);
+    const distance = calculateDistance(
+      currentLat,
+      currentLon,
+      targetLat,
+      targetLon,
+    );
     return distance <= maxDistance;
   };
 
@@ -750,17 +790,61 @@ const DriverHomeScreen: React.FC<{
 
         Alert.alert(
           'Viaje Completado - Cuenta Suspendida',
-          `Viaje completado exitosamente.\nSe ha descontado una comisión de $${commission.toFixed(2)}.\n\nTu cuenta ha sido suspendida por balance negativo. Por favor, contacta al administrador para reactivar tu cuenta.`
+          `Viaje completado exitosamente.\nSe ha descontado una comisión de $${commission.toFixed(
+            2,
+          )}.\n\nTu cuenta ha sido suspendida por balance negativo. Por favor, contacta al administrador para reactivar tu cuenta.`,
         );
       } else {
         Alert.alert(
           'Viaje Completado',
-          `Viaje completado exitosamente.\nSe ha descontado una comisión de $${commission.toFixed(2)}`
+          `Viaje completado exitosamente.\nSe ha descontado una comisión de $${commission.toFixed(
+            2,
+          )}`,
         );
       }
     } catch (error) {
       console.error('Error completing trip:', error);
       Alert.alert('Error', 'No se pudo completar el viaje');
+    }
+  };
+
+  // Agregar esta función después de handleTripCompletion
+  const handleTripCancellation = async () => {
+    try {
+      if (!activeTrip?.id) return;
+
+      // Mostrar diálogo de confirmación
+      Alert.alert(
+        'Cancelar Viaje',
+        '¿Estás seguro que deseas cancelar este viaje?',
+        [
+          {
+            text: 'No',
+            style: 'cancel',
+          },
+          {
+            text: 'Sí, Cancelar',
+            style: 'destructive',
+            onPress: async () => {
+              await tripRequestService.updateTripStatus(
+                activeTrip.id,
+                'cancelled',
+              );
+
+              // Resetear estados
+              setActiveTrip(null);
+              setTripPhase(null);
+              setCurrentRoute(null);
+              setPendingRequests([]);
+
+              Alert.alert('Éxito', 'El viaje ha sido cancelado');
+            },
+          },
+        ],
+      );
+    } catch (error) {
+      console.error('Error cancelling trip:', error);
+      Alert.alert('Error', 'No se pudo cancelar el viaje');
     }
   };
 
@@ -853,7 +937,7 @@ const DriverHomeScreen: React.FC<{
         },
       );
     } catch (error) {
-      Alert.alert('Error', 'No se pudo obtener la ubicación inicial');
+      //Alert.alert('Error', 'No se pudo obtener la ubicación inicial');
     }
   };
 
@@ -883,12 +967,12 @@ const DriverHomeScreen: React.FC<{
   const toggleDutyStatus = async () => {
     try {
       const newStatus = !isOnDuty;
-      
+
       // Si está intentando ponerse en servicio, verificar el balance
       if (newStatus) {
         // Obtener el perfil actualizado para verificar el balance
         const driverProfile = await driverService.getDriverProfile(user.id);
-        
+
         // Si el balance es negativo, no permitir activar el servicio
         if (driverProfile.balance < 0) {
           Alert.alert(
@@ -898,7 +982,7 @@ const DriverHomeScreen: React.FC<{
           return;
         }
       }
-      
+
       await driverService.updateDriverStatus(user.id, newStatus);
       setIsOnDuty(newStatus);
 
@@ -1166,10 +1250,7 @@ const DriverHomeScreen: React.FC<{
                   360
                 : 180
             }>
-            <Image
-              source={require('../../assets/navegation-arrow.png')}
-              style={styles.navigationArrow}
-            />
+            <Navigation2 size={24} color="#dc2626" />
           </Marker>
         )}
       </MapView>
@@ -1209,6 +1290,13 @@ const DriverHomeScreen: React.FC<{
               style={[styles.circleButton, styles.messageButton]}
               onPress={handleSendSMS}>
               <MessageSquareIcon size={24} color="white" />
+            </TouchableOpacity>
+
+            {/* Agregar botón de cancelación */}
+            <TouchableOpacity
+              style={[styles.circleButton, styles.cancelButton]}
+              onPress={handleTripCancellation}>
+              <X size={24} color="white" />
             </TouchableOpacity>
           </View>
         </View>
@@ -1577,6 +1665,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: 'bold',
     color: '#8B5CF6',
+  },
+  cancelButton: {
+    backgroundColor: '#ef4444',
   },
 });
 

@@ -82,6 +82,17 @@ const OperatorTripsScreen = ({user}: {user: {id: string; role?: string}}) => {
     );
   };
 
+  const handleResendTrip = async (tripId: string) => {
+    try {
+      await tripRequestService.resendCancelledTrip(tripId);
+      Alert.alert('Éxito', 'El viaje ha sido reenviado como nueva solicitud');
+      loadTrips();
+    } catch (error) {
+      console.error('Error resending trip:', error);
+      Alert.alert('Error', 'No se pudo reenviar el viaje');
+    }
+  };
+
   const getStatusColor = (status: string) => {
     const colors = {
       broadcasting: '#8b5cf6', // Morado para solicitudes en broadcasting
@@ -114,6 +125,7 @@ const OperatorTripsScreen = ({user}: {user: {id: string; role?: string}}) => {
     const canCancel = ['broadcasting', 'pending', 'in_progress'].includes(
       item.status,
     );
+    const canResend = item.status === 'cancelled';
 
     return (
       <View style={styles.tripCard}>
@@ -147,13 +159,23 @@ const OperatorTripsScreen = ({user}: {user: {id: string; role?: string}}) => {
           </Text>
         </View>
 
-        {canCancel && (
-          <TouchableOpacity
-            style={styles.cancelButton}
-            onPress={() => handleCancelTrip(item)}>
-            <Text style={styles.cancelButtonText}>Cancelar Viaje</Text>
-          </TouchableOpacity>
-        )}
+        <View style={styles.actionButtons}>
+          {canCancel && (
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={() => handleCancelTrip(item)}>
+              <Text style={styles.buttonText}>Cancelar Viaje</Text>
+            </TouchableOpacity>
+          )}
+          
+          {canResend && (
+            <TouchableOpacity
+              style={styles.resendButton}
+              onPress={() => handleResendTrip(item.id)}>
+              <Text style={styles.buttonText}>Reenviar Solicitud</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
     );
   };
@@ -300,7 +322,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 10,
   },
-  cancelButtonText: {
+  buttonText: {
     color: '#fff',
     fontWeight: '500',
   },
@@ -313,6 +335,19 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: '#6b7280',
     marginTop: 20,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 10,
+    gap: 10,
+  },
+  resendButton: {
+    backgroundColor: '#3b82f6',
+    padding: 10,
+    borderRadius: 8,
+    flex: 1,
+    alignItems: 'center',
   },
 });
 
